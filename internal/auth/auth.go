@@ -3,11 +3,14 @@ package auth
 import (
 	"database/sql"
 	"errors"
+	"net/http"
+	"os"
 	"time"
 
 	"integratorV2/internal/db"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/labstack/echo/v4"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -88,4 +91,42 @@ func GenerateToken(user *User) (string, error) {
 
 func VerifyPassword(hashedPassword, password string) error {
 	return bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password))
+}
+
+// JWTMiddleware middleware for JWT authentication
+func JWTMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		// Get token from Authorization header
+		authHeader := c.Request().Header.Get("Authorization")
+		if authHeader == "" {
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Authorization header is required"})
+		}
+
+		// Extract token from "Bearer <token>"
+		tokenString := authHeader[7:] // Remove "Bearer " prefix
+		if tokenString == "" {
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid token format"})
+		}
+
+		// Parse and validate token
+		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, errors.New("unexpected signing method")
+			}
+			return []byte(os.Getenv("JWT_SECRET")), nil
+		})
+
+		if err != nil {
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid token"})
+		}
+
+		if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+			// Set user ID in context
+			userID := int64(claims["user_id"].(float64))
+			c.Set("user_id", userID)
+			return next(c)
+		}
+
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid token"})
+	}
 }

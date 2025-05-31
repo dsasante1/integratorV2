@@ -11,28 +11,48 @@ import (
 
 var DB *sqlx.DB
 
-func Init() error {
+// InitDB initializes the database connection
+func InitDB() error {
 	// Get database connection details from environment variables
-	dbHost := getEnv("DB_HOST", "localhost")
-	dbPort := getEnv("DB_PORT", "5432")
-	dbUser := getEnv("DB_USER", "postgres")
-	dbPass := getEnv("DB_PASSWORD", "postgres")
-	dbName := getEnv("DB_NAME", "integrator")
+	dbHost := os.Getenv("DB_HOST")
+	if dbHost == "" {
+		dbHost = "localhost"
+	}
+
+	dbPort := os.Getenv("DB_PORT")
+	if dbPort == "" {
+		dbPort = "5432"
+	}
+
+	dbUser := os.Getenv("DB_USER")
+	if dbUser == "" {
+		dbUser = "postgres"
+	}
+
+	dbPassword := os.Getenv("DB_PASSWORD")
+	if dbPassword == "" {
+		dbPassword = "postgres"
+	}
+
+	dbName := os.Getenv("DB_NAME")
+	if dbName == "" {
+		dbName = "postgres"
+	}
 
 	// Create connection string
 	connStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-		dbHost, dbPort, dbUser, dbPass, dbName)
+		dbHost, dbPort, dbUser, dbPassword, dbName)
 
-	// Open database connection
+	// Connect to database
 	var err error
 	DB, err = sqlx.Connect("postgres", connStr)
 	if err != nil {
-		return fmt.Errorf("error connecting to the database: %v", err)
+		return fmt.Errorf("error connecting to database: %v", err)
 	}
 
-	// Test the connection
+	// Test connection
 	if err := DB.Ping(); err != nil {
-		return fmt.Errorf("error pinging the database: %v", err)
+		return fmt.Errorf("error pinging database: %v", err)
 	}
 
 	log.Println("Successfully connected to database")
