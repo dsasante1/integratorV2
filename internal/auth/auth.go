@@ -5,30 +5,75 @@ import (
 	"errors"
 	"net/http"
 	"os"
+	"regexp"
 	"time"
 
 	"integratorV2/internal/db"
 
+	"github.com/go-playground/validator/v10"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v4"
 	"golang.org/x/crypto/bcrypt"
 )
 
+
+func init() {
+	Validate = validator.New()
+	
+	// Register custom password validation
+	Validate.RegisterValidation("password", validatePassword)
+}
+
+// Custom password validation function
+func validatePassword(fl validator.FieldLevel) bool {
+	password := fl.Field().String()
+	
+	// At least 8 characters
+	if len(password) < 8 {
+		return false
+	}
+	
+	// Contains uppercase letter
+	hasUpper := regexp.MustCompile(`[A-Z]`).MatchString(password)
+	// Contains lowercase letter
+	hasLower := regexp.MustCompile(`[a-z]`).MatchString(password)
+	// Contains digit
+	hasDigit := regexp.MustCompile(`\d`).MatchString(password)
+	// Contains special character
+	hasSpecial := regexp.MustCompile(`[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]`).MatchString(password)
+	
+	return hasUpper && hasLower && hasDigit && hasSpecial
+}
+
+// ValidateEmail validates email format and requirements
+func ValidateEmail(email string) error {
+	if email == "" {
+		return errors.New("email is required")
+	}
+	
+	// Use validator to check email format
+	if err := Validate.Var(email, "required,email"); err != nil {
+		return errors.New("invalid email format")
+	}
+	
+	return nil
+}
+
 type User struct {
 	ID        int64     `db:"id" json:"id"`
-	Email     string    `db:"email" json:"email"`
-	Password  string    `db:"password" json:"-"`
+	Email     string    `db:"email" json:"email" validate:"required,email"`
+	Password  string    `db:"password" json:"-" validate:"required,password"`
 	CreatedAt time.Time `db:"created_at" json:"created_at"`
 }
 
 type SignupRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Email    string `json:"email" validate:"required,email"`
+	Password string `json:"password" validate:"required,password"`
 }
 
 type LoginRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Email    string `json:"email" validate:"required,email"`
+	Password string `json:"password" validate:"required"`
 }
 
 type LoginResponse struct {
@@ -84,9 +129,14 @@ func GenerateToken(user *User) (string, error) {
 	// Create token
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
+	// Get secret from environment variable, fallback to default for development
+	secret := os.Getenv("JWT_SECRET")
+	if secret == "" {
+		secret = "your-secret-key" // Use this only for development
+	}
+
 	// Generate encoded token
-	// In production, use a secure secret key from environment variables
-	return token.SignedString([]byte("your-secret-key"))
+	return token.SignedString([]byte(secret))
 }
 
 func VerifyPassword(hashedPassword, password string) error {
@@ -103,6 +153,10 @@ func JWTMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 		}
 
 		// Extract token from "Bearer <token>"
+		if len(authHeader) < 7 || authHeader[:7] != "Bearer " {
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid token format"})
+		}
+		
 		tokenString := authHeader[7:] // Remove "Bearer " prefix
 		if tokenString == "" {
 			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid token format"})
@@ -113,7 +167,13 @@ func JWTMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, errors.New("unexpected signing method")
 			}
-			return []byte(os.Getenv("JWT_SECRET")), nil
+			
+			secret := os.Getenv("JWT_SECRET")
+			if secret == "" {
+				secret = "your-secret-key" // Use this only for development
+			}
+			
+			return []byte(secret), nil
 		})
 
 		if err != nil {

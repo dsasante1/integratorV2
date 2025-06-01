@@ -28,6 +28,7 @@ func main() {
 
 	// Public routes (versioned)
 	v1 := e.Group("/integrator/api/v1")
+	
 	v1.GET("/health-check", handlers.HealthCheck)
 	v1.POST("/signup", handlers.Signup)
 	v1.POST("/login", handlers.Login)

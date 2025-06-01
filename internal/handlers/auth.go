@@ -2,9 +2,11 @@ package handlers
 
 import (
 	"net/http"
+	"strings"
 
 	"integratorV2/internal/auth"
 
+	"github.com/go-playground/validator/v10"
 	"github.com/labstack/echo/v4"
 )
 
@@ -14,21 +16,42 @@ func Signup(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request"})
 	}
 
-	// Validate email
-	if err := auth.ValidateEmail(req.Email); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	// Validate the entire struct
+	if err := auth.Validate.Struct(&req); err != nil {
+		// Handle validation errors
+		if validationErrors, ok := err.(validator.ValidationErrors); ok {
+			// Get the first validation error
+			if len(validationErrors) > 0 {
+				fieldError := validationErrors[0]
+				switch fieldError.Tag() {
+				case "required":
+					return c.JSON(http.StatusBadRequest, map[string]string{"error": fieldError.Field() + " is required"})
+				case "email":
+					return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid email format"})
+				case "password":
+					return c.JSON(http.StatusBadRequest, map[string]string{
+						"error": "Password must be at least 8 characters long and contain uppercase, lowercase, number, and special character",
+					})
+				default:
+					return c.JSON(http.StatusBadRequest, map[string]string{"error": "Validation failed"})
+				}
+			}
+		}
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Validation failed"})
 	}
 
-	// Validate password
-	if err := auth.Validate.Var(req.Password, "password"); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "Password must be at least 8 characters long and contain uppercase, lowercase, number, and special character",
-		})
+	// Additional email validation (if you have custom logic)
+	if err := auth.ValidateEmail(req.Email); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
 	// Create user
 	user, err := auth.CreateUser(req.Email, req.Password)
 	if err != nil {
+		// Check for duplicate email error
+		if strings.Contains(err.Error(), "duplicate") || strings.Contains(err.Error(), "unique") {
+			return c.JSON(http.StatusConflict, map[string]string{"error": "Email already exists"})
+		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to create user"})
 	}
 
@@ -41,9 +64,9 @@ func Login(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request"})
 	}
 
-	// Validate email
-	if err := auth.ValidateEmail(req.Email); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	// Validate the request
+	if err := auth.Validate.Struct(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid email or password format"})
 	}
 
 	// Get user by email

@@ -3,8 +3,8 @@ package main
 import (
 	"log"
 
-	"dsasante1/integratorV2/config"
-	"dsasante1/integratorV2/server"
+	"integratorV2/config"
+	"integratorV2/server"
 )
 
 func main() {
@@ -19,4 +19,4 @@ func main() {
 	if err := srv.Start(":8080"); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
-} 
+}

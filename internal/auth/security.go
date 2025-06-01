@@ -1,10 +1,7 @@
 package auth
 
 import (
-	"errors"
 	"net/http"
-	"regexp"
-	"strings"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/labstack/echo/v4"
@@ -30,65 +27,6 @@ func InitSecurity() {
 	}
 	store := memory.NewStore()
 	RateLimiter = limiterpkg.New(store, rate)
-}
-
-func validatePassword(fl validator.FieldLevel) bool {
-	password := fl.Field().String()
-
-	// At least 8 characters
-	if len(password) < 8 {
-		return false
-	}
-
-	// At least one uppercase letter
-	if !strings.ContainsAny(password, "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
-		return false
-	}
-
-	// At least one lowercase letter
-	if !strings.ContainsAny(password, "abcdefghijklmnopqrstuvwxyz") {
-		return false
-	}
-
-	// At least one number
-	if !strings.ContainsAny(password, "0123456789") {
-		return false
-	}
-
-	// At least one special character
-	if !strings.ContainsAny(password, "!@#$%^&*()_+-=[]{}|;:,.<>?") {
-		return false
-	}
-
-	return true
-}
-
-func ValidateEmail(email string) error {
-	// Basic email format validation
-	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
-	if !emailRegex.MatchString(email) {
-		return errors.New("invalid email format")
-	}
-
-	// Additional validation rules
-	if len(email) > 255 {
-		return errors.New("email too long")
-	}
-
-	// Check for common disposable email domains
-	disposableDomains := []string{
-		"tempmail.com",
-		"throwawaymail.com",
-		"mailinator.com",
-		// Add more as needed
-	}
-	for _, domain := range disposableDomains {
-		if strings.HasSuffix(strings.ToLower(email), "@"+domain) {
-			return errors.New("disposable email addresses are not allowed")
-		}
-	}
-
-	return nil
 }
 
 func RateLimitMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
