@@ -14,14 +14,7 @@ import (
 
 func main() {
 	// Initialize database
-	if err := db.InitDB(); err != nil {
-		log.Fatalf("Failed to initialize database: %v", err)
-	}
-
-	// Initialize users table
-	if err := db.InitUserTable(); err != nil {
-		log.Fatalf("Failed to initialize users table: %v", err)
-	}
+	db.InitDB()
 
 	// Initialize collection tables
 	if err := db.InitCollectionTables(); err != nil {
@@ -41,7 +34,7 @@ func main() {
 	e.Use(security.ValidateEmail)
 
 	// Public routes
-	e.GET("/health", handlers.HealthCheck)
+	e.GET("/health-check", handlers.HealthCheck)
 	e.POST("/signup", handlers.Signup)
 	e.POST("/login", handlers.Login)
 
