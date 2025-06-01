@@ -59,11 +59,11 @@ func loadEnv() error {
 }
 
 func getDBURL() string {
-	dbHost := getEnv("DB_HOST", "localhost")
-	dbPort := getEnv("DB_PORT", "5432")
-	dbUser := getEnv("DB_USER", "postgres")
-	dbPassword := getEnv("DB_PASSWORD", "postgres")
-	dbName := getEnv("DB_NAME", "postgres")
+	dbHost := getEnv("DB_HOST")
+	dbPort := getEnv("DB_PORT")
+	dbUser := getEnv("DB_USER")
+	dbPassword := getEnv("DB_PASSWORD")
+	dbName := getEnv("DB_NAME")
 
 	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
 		dbUser, dbPassword, dbHost, dbPort, dbName)
