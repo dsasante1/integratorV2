@@ -34,6 +34,17 @@ type Change struct {
 	ChangeTime    time.Time `db:"change_time" json:"change_time"`
 }
 
+func StoreCollection(id, name string) error {
+	_, err := DB.Exec(`
+		INSERT INTO collections (id, name)
+		VALUES ($1, $2)
+		ON CONFLICT (id) DO UPDATE
+		SET name = $2,
+		    last_seen = CURRENT_TIMESTAMP
+	`, id, name)
+	return err
+}
+
 // func InitCollectionTables() error {
 // 	// Create users table first
 // 	_, err := DB.Exec(`

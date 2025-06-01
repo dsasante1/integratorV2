@@ -28,7 +28,7 @@ func main() {
 
 	// Public routes (versioned)
 	v1 := e.Group("/integrator/api/v1")
-	
+
 	v1.GET("/health-check", handlers.HealthCheck)
 	v1.POST("/signup", handlers.Signup)
 	v1.POST("/login", handlers.Login)
@@ -40,9 +40,8 @@ func main() {
 	// User routes
 	protectedV1.POST("/api-key", handlers.StoreAPIKey)
 	protectedV1.GET("/collections", handlers.GetCollections)
-	protectedV1.GET("/collections/:id", handlers.GetCollection)
-	protectedV1.GET("/collections/:id/history", handlers.GetCollectionHistory)
-	protectedV1.GET("/collections/:id/changes", handlers.GetCollectionChanges)
+	protectedV1.POST("/collections/store", handlers.StoreCollection)
+	protectedV1.GET("/collections/:id/details", handlers.GetCollectionDetails)
 
 	// Start server
 	e.Logger.Fatal(e.Start(":8080"))
