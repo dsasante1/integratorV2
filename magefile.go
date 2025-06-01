@@ -49,6 +49,49 @@ func MigrateCreate(name string) error {
 	return cmd.Run()
 }
 
+// MigrateForce forces the database to a specific version (use carefully)
+func MigrateForce(version string) error {
+	if err := loadEnv(); err != nil {
+		return err
+	}
+
+	if version == "" {
+		return fmt.Errorf("version is required")
+	}
+
+	dbURL := getDBURL()
+	cmd := exec.Command("migrate", "-path", "migrations", "-database", dbURL, "force", version)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+// MigrateVersion shows current migration version
+func MigrateVersion() error {
+	if err := loadEnv(); err != nil {
+		return err
+	}
+
+	dbURL := getDBURL()
+	cmd := exec.Command("migrate", "-path", "migrations", "-database", dbURL, "version")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+// Drop drops the entire database (use with extreme caution)
+func MigrateDrop() error {
+	if err := loadEnv(); err != nil {
+		return err
+	}
+
+	dbURL := getDBURL()
+	cmd := exec.Command("migrate", "-path", "migrations", "-database", dbURL, "drop", "-f")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
 // Helper functions
 
 func loadEnv() error {
@@ -59,11 +102,11 @@ func loadEnv() error {
 }
 
 func getDBURL() string {
-	dbHost := getEnv("DB_HOST")
-	dbPort := getEnv("DB_PORT")
-	dbUser := getEnv("DB_USER")
-	dbPassword := getEnv("DB_PASSWORD")
-	dbName := getEnv("DB_NAME")
+	dbHost := getEnv("DB_HOST", "localhost")
+	dbPort := getEnv("DB_PORT", "5432")
+	dbUser := getEnv("DB_USER", "postgres")
+	dbPassword := getEnv("DB_PASSWORD", "")
+	dbName := getEnv("DB_NAME", "mydb")
 
 	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
 		dbUser, dbPassword, dbHost, dbPort, dbName)

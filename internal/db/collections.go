@@ -34,86 +34,86 @@ type Change struct {
 	ChangeTime    time.Time `db:"change_time" json:"change_time"`
 }
 
-func InitCollectionTables() error {
-	// Create users table first
-	_, err := DB.Exec(`
-		CREATE TABLE IF NOT EXISTS users (
-			id SERIAL PRIMARY KEY,
-			email VARCHAR(255) UNIQUE NOT NULL,
-			password VARCHAR(255) NOT NULL,
-			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-		)
-	`)
-	if err != nil {
-		return fmt.Errorf("error creating users table: %v", err)
-	}
+// func InitCollectionTables() error {
+// 	// Create users table first
+// 	_, err := DB.Exec(`
+// 		CREATE TABLE IF NOT EXISTS users (
+// 			id SERIAL PRIMARY KEY,
+// 			email VARCHAR(255) UNIQUE NOT NULL,
+// 			password VARCHAR(255) NOT NULL,
+// 			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+// 		)
+// 	`)
+// 	if err != nil {
+// 		return fmt.Errorf("error creating users table: %v", err)
+// 	}
 
-	// Create collections table
-	_, err = DB.Exec(`
-		CREATE TABLE IF NOT EXISTS collections (
-			id TEXT PRIMARY KEY,
-			name TEXT NOT NULL,
-			first_seen TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-			last_seen TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-		)
-	`)
-	if err != nil {
-		return fmt.Errorf("error creating collections table: %v", err)
-	}
+// 	// Create collections table
+// 	_, err = DB.Exec(`
+// 		CREATE TABLE IF NOT EXISTS collections (
+// 			id TEXT PRIMARY KEY,
+// 			name TEXT NOT NULL,
+// 			first_seen TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+// 			last_seen TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+// 		)
+// 	`)
+// 	if err != nil {
+// 		return fmt.Errorf("error creating collections table: %v", err)
+// 	}
 
-	// Create snapshots table
-	_, err = DB.Exec(`
-		CREATE TABLE IF NOT EXISTS snapshots (
-			id SERIAL PRIMARY KEY,
-			collection_id TEXT NOT NULL,
-			snapshot_time TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-			content JSONB NOT NULL,
-			hash TEXT NOT NULL,
-			FOREIGN KEY (collection_id) REFERENCES collections(id)
-		)
-	`)
-	if err != nil {
-		return fmt.Errorf("error creating snapshots table: %v", err)
-	}
+// 	// Create snapshots table
+// 	_, err = DB.Exec(`
+// 		CREATE TABLE IF NOT EXISTS snapshots (
+// 			id SERIAL PRIMARY KEY,
+// 			collection_id TEXT NOT NULL,
+// 			snapshot_time TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+// 			content JSONB NOT NULL,
+// 			hash TEXT NOT NULL,
+// 			FOREIGN KEY (collection_id) REFERENCES collections(id)
+// 		)
+// 	`)
+// 	if err != nil {
+// 		return fmt.Errorf("error creating snapshots table: %v", err)
+// 	}
 
-	// Create changes table
-	_, err = DB.Exec(`
-		CREATE TABLE IF NOT EXISTS changes (
-			id SERIAL PRIMARY KEY,
-			collection_id TEXT NOT NULL,
-			old_snapshot_id INTEGER,
-			new_snapshot_id INTEGER NOT NULL,
-			change_type TEXT NOT NULL,
-			path TEXT NOT NULL,
-			old_value TEXT,
-			new_value TEXT,
-			change_time TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-			FOREIGN KEY (collection_id) REFERENCES collections(id),
-			FOREIGN KEY (old_snapshot_id) REFERENCES snapshots(id),
-			FOREIGN KEY (new_snapshot_id) REFERENCES snapshots(id)
-		)
-	`)
-	if err != nil {
-		return fmt.Errorf("error creating changes table: %v", err)
-	}
+// 	// Create changes table
+// 	_, err = DB.Exec(`
+// 		CREATE TABLE IF NOT EXISTS changes (
+// 			id SERIAL PRIMARY KEY,
+// 			collection_id TEXT NOT NULL,
+// 			old_snapshot_id INTEGER,
+// 			new_snapshot_id INTEGER NOT NULL,
+// 			change_type TEXT NOT NULL,
+// 			path TEXT NOT NULL,
+// 			old_value TEXT,
+// 			new_value TEXT,
+// 			change_time TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+// 			FOREIGN KEY (collection_id) REFERENCES collections(id),
+// 			FOREIGN KEY (old_snapshot_id) REFERENCES snapshots(id),
+// 			FOREIGN KEY (new_snapshot_id) REFERENCES snapshots(id)
+// 		)
+// 	`)
+// 	if err != nil {
+// 		return fmt.Errorf("error creating changes table: %v", err)
+// 	}
 
-	// Create postman_api_keys table
-	_, err = DB.Exec(`
-		CREATE TABLE IF NOT EXISTS postman_api_keys (
-			id SERIAL PRIMARY KEY,
-			user_id INTEGER NOT NULL,
-			api_key TEXT NOT NULL,
-			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-			last_used_at TIMESTAMP WITH TIME ZONE,
-			FOREIGN KEY (user_id) REFERENCES users(id)
-		)
-	`)
-	if err != nil {
-		return fmt.Errorf("error creating postman_api_keys table: %v", err)
-	}
+// 	// Create postman_api_keys table
+// 	_, err = DB.Exec(`
+// 		CREATE TABLE IF NOT EXISTS postman_api_keys (
+// 			id SERIAL PRIMARY KEY,
+// 			user_id INTEGER NOT NULL,
+// 			api_key TEXT NOT NULL,
+// 			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+// 			last_used_at TIMESTAMP WITH TIME ZONE,
+// 			FOREIGN KEY (user_id) REFERENCES users(id)
+// 		)
+// 	`)
+// 	if err != nil {
+// 		return fmt.Errorf("error creating postman_api_keys table: %v", err)
+// 	}
 
-	return nil
-}
+// 	return nil
+// }
 
 func StorePostmanAPIKey(userID int64, apiKey string) error {
 	_, err := DB.Exec(`

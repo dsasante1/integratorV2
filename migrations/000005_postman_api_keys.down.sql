@@ -1,0 +1,1 @@
+DROP TABLE IF NOT EXISTS postman_api_keys;

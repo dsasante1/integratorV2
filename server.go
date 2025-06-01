@@ -16,11 +16,6 @@ func main() {
 	// Initialize database
 	db.InitDB()
 
-	// Initialize collection tables
-	if err := db.InitCollectionTables(); err != nil {
-		log.Fatalf("Failed to initialize collection tables: %v", err)
-	}
-
 	// Initialize security features
 	security.InitSecurity()
 
