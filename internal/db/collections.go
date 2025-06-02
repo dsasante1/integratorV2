@@ -37,6 +37,17 @@ type Change struct {
 	ChangeTime    time.Time `db:"change_time" json:"change_time"`
 }
 
+type CollectionJob struct {
+	ID           int64     `db:"id" json:"id"`
+	UserID       int64     `db:"user_id" json:"user_id"`
+	CollectionID string    `db:"collection_id" json:"collection_id"`
+	Name         string    `db:"name" json:"name"`
+	Status       string    `db:"status" json:"status"`
+	Error        *string   `db:"error" json:"error"`
+	CreatedAt    time.Time `db:"created_at" json:"created_at"`
+	UpdatedAt    time.Time `db:"updated_at" json:"updated_at"`
+}
+
 func StoreCollection(id, name string) error {
 	_, err := DB.Exec(`
 		INSERT INTO collections (id, name)
@@ -253,4 +264,62 @@ func UpdateLastUsedAPIKey(userID int64) error {
 
 	slog.Info("Successfully updated last used timestamp", "user_id", userID)
 	return nil
+}
+
+func CreateCollectionJob(userID int64, collectionID, name string) (*CollectionJob, error) {
+	job := &CollectionJob{
+		UserID:       userID,
+		CollectionID: collectionID,
+		Name:         name,
+		Status:       "pending",
+	}
+
+	err := DB.QueryRow(`
+		INSERT INTO collection_jobs (user_id, collection_id, name)
+		VALUES ($1, $2, $3)
+		RETURNING id, created_at, updated_at
+	`, userID, collectionID, name).Scan(&job.ID, &job.CreatedAt, &job.UpdatedAt)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to create collection job: %v", err)
+	}
+
+	return job, nil
+}
+
+func UpdateCollectionJobStatus(jobID int64, status string, errMsg *string) error {
+	_, err := DB.Exec(`
+		UPDATE collection_jobs
+		SET status = $1, error = $2, updated_at = CURRENT_TIMESTAMP
+		WHERE id = $3
+	`, status, errMsg, jobID)
+	if err != nil {
+		return fmt.Errorf("failed to update collection job status: %v", err)
+	}
+	return nil
+}
+
+func GetCollectionJob(jobID int64) (*CollectionJob, error) {
+	job := &CollectionJob{}
+	err := DB.Get(job, `
+		SELECT * FROM collection_jobs
+		WHERE id = $1
+	`, jobID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get collection job: %v", err)
+	}
+	return job, nil
+}
+
+func GetUserCollectionJobs(userID int64) ([]CollectionJob, error) {
+	var jobs []CollectionJob
+	err := DB.Select(&jobs, `
+		SELECT * FROM collection_jobs
+		WHERE user_id = $1
+		ORDER BY created_at DESC
+	`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user collection jobs: %v", err)
+	}
+	return jobs, nil
 }

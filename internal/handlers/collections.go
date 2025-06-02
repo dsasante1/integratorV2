@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strconv"
 
 	"integratorV2/internal/db"
 	"integratorV2/internal/postman"
+	"integratorV2/internal/queue"
 
 	"github.com/labstack/echo/v4"
 )
@@ -21,6 +23,7 @@ type RotateAPIKeyRequest struct {
 
 type StoreCollectionRequest struct {
 	CollectionID string `json:"collection_id" validate:"required"`
+	Name         string `json:"name" validate:"required"`
 }
 
 func StoreAPIKey(c echo.Context) error {
@@ -105,33 +108,53 @@ func StoreCollection(c echo.Context) error {
 	// Get user ID from JWT token
 	userID := c.Get("user_id").(int64)
 
-	// Get API key
-	apiKey, err := db.GetPostmanAPIKey(userID)
+	// Get API key to verify it exists
+	_, err := db.GetPostmanAPIKey(userID)
 	if err != nil {
+		slog.Error("No API key found", "error", err, "user_id", userID)
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "No API key found. Please store your Postman API key first."})
 	}
 
 	var req StoreCollectionRequest
 	if err := c.Bind(&req); err != nil {
+		slog.Error("Invalid request", "error", err, "user_id", userID)
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request"})
 	}
 
 	if req.CollectionID == "" {
+		slog.Warn("Empty collection ID provided", "user_id", userID)
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Collection ID is required"})
 	}
 
-	// Get collection from Postman
-	collection, err := postman.GetCollection(apiKey, req.CollectionID)
+	if req.Name == "" {
+		slog.Warn("Empty collection name provided", "user_id", userID)
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Collection name is required"})
+	}
+
+	// Create task payload
+	payload := queue.CollectionImportPayload{
+		UserID:       userID,
+		CollectionID: req.CollectionID,
+		Name:         req.Name,
+	}
+
+	// Enqueue task
+	taskID, err := queue.EnqueueCollectionImport(payload)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch collection from Postman"})
+		slog.Error("Failed to enqueue collection import", "error", err, "user_id", userID)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to start collection import"})
 	}
 
-	// Store collection in database
-	if err := db.StoreCollection(collection.Collection.ID, collection.Collection.Name); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to store collection"})
-	}
+	slog.Info("Enqueued collection import",
+		"user_id", userID,
+		"collection_id", req.CollectionID,
+		"name", req.Name,
+		"task_id", taskID)
 
-	return c.JSON(http.StatusOK, map[string]string{"message": "Collection stored successfully"})
+	return c.JSON(http.StatusAccepted, map[string]interface{}{
+		"message": "Collection import started",
+		"task_id": taskID,
+	})
 }
 
 func GetCollectionDetails(c echo.Context) error {
@@ -189,4 +212,49 @@ func GetCollectionDetails(c echo.Context) error {
 		"snapshots":  snapshots,
 		"changes":    changes,
 	})
+}
+
+func GetJobStatus(c echo.Context) error {
+	// Get user ID from JWT token
+	userID := c.Get("user_id").(int64)
+
+	// Get job ID from path
+	jobID := c.Param("id")
+	if jobID == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Job ID is required"})
+	}
+
+	// Convert job ID to int64
+	id, err := strconv.ParseInt(jobID, 10, 64)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid job ID"})
+	}
+
+	// Get job status
+	job, err := db.GetCollectionJob(id)
+	if err != nil {
+		slog.Error("Failed to get job status", "error", err, "user_id", userID, "job_id", id)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get job status"})
+	}
+
+	// Verify the job belongs to the user
+	if job.UserID != userID {
+		return c.JSON(http.StatusForbidden, map[string]string{"error": "Access denied"})
+	}
+
+	return c.JSON(http.StatusOK, job)
+}
+
+func GetUserJobs(c echo.Context) error {
+	// Get user ID from JWT token
+	userID := c.Get("user_id").(int64)
+
+	// Get user's jobs
+	jobs, err := db.GetUserCollectionJobs(userID)
+	if err != nil {
+		slog.Error("Failed to get user jobs", "error", err, "user_id", userID)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get user jobs"})
+	}
+
+	return c.JSON(http.StatusOK, jobs)
 }

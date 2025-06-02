@@ -1,10 +1,17 @@
 package main
 
 import (
-	"integratorV2/internal/auth"
+	"context"
 	"integratorV2/internal/db"
-	"integratorV2/internal/handlers"
+	"integratorV2/internal/queue"
+	"integratorV2/internal/routes"
 	"integratorV2/internal/security"
+	"integratorV2/internal/worker"
+	"log/slog"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -12,15 +19,30 @@ import (
 
 func main() {
 	// Initialize database
-	db.InitDB()
+	if err := db.InitDB(); err != nil {
+		slog.Error("Failed to initialize database", "error", err)
+		os.Exit(1)
+	}
+	defer db.Close()
 
 	// Initialize security features
-	security.InitSecurity()
+	if err := security.InitSecurity(); err != nil {
+		slog.Error("Failed to initialize security features", "error", err)
+		os.Exit(1)
+	}
 
 	// Initialize AWS KMS
 	if err := security.InitKMS(); err != nil {
-		panic(err)
+		slog.Error("Failed to initialize AWS KMS", "error", err)
+		os.Exit(1)
 	}
+
+	// Initialize task queue
+	if err := queue.InitQueue(); err != nil {
+		slog.Error("Failed to initialize task queue", "error", err)
+		os.Exit(1)
+	}
+	defer queue.Close()
 
 	// Create Echo instance
 	e := echo.New()
@@ -31,24 +53,49 @@ func main() {
 	e.Use(security.RateLimiter)
 	e.Use(security.ValidateEmail)
 
-	// Public routes (versioned)
 	v1 := e.Group("/integrator/api/v1")
 
-	v1.GET("/health-check", handlers.HealthCheck)
-	v1.POST("/signup", handlers.Signup)
-	v1.POST("/login", handlers.Login)
+	// Setup v1 routes
+	routes.SetupRoutes(v1)
 
-	// Protected routes (versioned)
-	protectedV1 := v1.Group("")
-	protectedV1.Use(auth.JWTMiddleware)
+	// Create and start worker
+	w := worker.NewWorker()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	// User routes
-	protectedV1.POST("/api-key", handlers.StoreAPIKey)
-	protectedV1.POST("/api-key/rotate", handlers.RotateAPIKey)
-	protectedV1.GET("/collections", handlers.GetCollections)
-	protectedV1.POST("/collections/store", handlers.StoreCollection)
-	protectedV1.GET("/collections/:id/details", handlers.GetCollectionDetails)
+	// Start worker in a goroutine
+	go func() {
+		if err := w.Start(ctx); err != nil {
+			slog.Error("Worker error", "error", err)
+		}
+	}()
+
+	// Handle graceful shutdown
+	go func() {
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+		<-sigChan
+
+		slog.Info("Shutting down...")
+		cancel() // Stop the worker
+
+		// Create a timeout context for shutdown
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer shutdownCancel()
+
+		if err := e.Shutdown(shutdownCtx); err != nil {
+			slog.Error("Error shutting down server", "error", err)
+		}
+	}()
+
+	// Get port from environment variable with default fallback
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
 
 	// Start server
-	e.Logger.Fatal(e.Start(":8080"))
+	if err := e.Start(":" + port); err != nil {
+		slog.Error("Error starting server", "error", err)
+	}
 }
