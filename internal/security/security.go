@@ -20,11 +20,12 @@ var (
 )
 
 // InitSecurity initializes security features
-func InitSecurity() {
+func InitSecurity() error {
 	// Initialize rate limiters
 	rateLimitMutex.Lock()
 	defer rateLimitMutex.Unlock()
 	rateLimiters = make(map[string]*rate.Limiter)
+	return nil
 }
 
 // RateLimiter middleware for rate limiting requests

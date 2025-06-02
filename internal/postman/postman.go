@@ -2,12 +2,9 @@ package postman
 
 import (
 	"bytes"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
-
-	"integratorV2/internal/db"
 )
 
 const (
@@ -30,6 +27,13 @@ type PostmanCollectionResponse struct {
 		Info json.RawMessage `json:"info"`
 		Item json.RawMessage `json:"item"`
 	} `json:"collection"`
+}
+
+type Change struct {
+	Type     string
+	Path     string
+	OldValue *string
+	NewValue *string
 }
 
 func GetCollections(apiKey string) ([]PostmanCollection, error) {
@@ -86,79 +90,6 @@ func GetCollection(apiKey, collectionID string) (*PostmanCollectionResponse, err
 	}
 
 	return &result, nil
-}
-
-func StoreCollectionSnapshot(collectionID string, content json.RawMessage) error {
-	// First, store the collection
-	var collection PostmanCollectionResponse
-	if err := json.Unmarshal(content, &collection); err != nil {
-		return fmt.Errorf("error unmarshaling collection: %v", err)
-	}
-
-	if err := db.StoreCollection(collectionID, collection.Collection.Name); err != nil {
-		return fmt.Errorf("error storing collection: %v", err)
-	}
-
-	// Calculate hash of content
-	hash := fmt.Sprintf("%x", content)
-
-	// Store snapshot
-	var snapshotID int64
-	err := db.DB.QueryRow(`
-		INSERT INTO snapshots (collection_id, content, hash)
-		VALUES ($1, $2, $3)
-		RETURNING id
-	`, collectionID, content, hash).Scan(&snapshotID)
-	if err != nil {
-		return fmt.Errorf("error storing snapshot: %v", err)
-	}
-
-	// Get previous snapshot
-	var oldSnapshotID *int64
-	err = db.DB.QueryRow(`
-		SELECT id FROM snapshots
-		WHERE collection_id = $1 AND id != $2
-		ORDER BY snapshot_time DESC
-		LIMIT 1
-	`, collectionID, snapshotID).Scan(&oldSnapshotID)
-	if err != nil && err != sql.ErrNoRows {
-		return fmt.Errorf("error getting previous snapshot: %v", err)
-	}
-
-	// If there's a previous snapshot, compare and store changes
-	if oldSnapshotID != nil {
-		var oldContent json.RawMessage
-		err = db.DB.QueryRow(`
-			SELECT content FROM snapshots WHERE id = $1
-		`, oldSnapshotID).Scan(&oldContent)
-		if err != nil {
-			return fmt.Errorf("error getting old snapshot content: %v", err)
-		}
-
-		// Compare and store changes
-		changes := compareSnapshots(oldContent, content)
-		for _, change := range changes {
-			_, err = db.DB.Exec(`
-				INSERT INTO changes (
-					collection_id, old_snapshot_id, new_snapshot_id,
-					change_type, path, old_value, new_value
-				) VALUES ($1, $2, $3, $4, $5, $6, $7)
-			`, collectionID, oldSnapshotID, snapshotID,
-				change.Type, change.Path, change.OldValue, change.NewValue)
-			if err != nil {
-				return fmt.Errorf("error storing change: %v", err)
-			}
-		}
-	}
-
-	return nil
-}
-
-type Change struct {
-	Type     string
-	Path     string
-	OldValue *string
-	NewValue *string
 }
 
 func compareSnapshots(old, new json.RawMessage) []Change {
