@@ -21,6 +21,7 @@ type RotateAPIKeyRequest struct {
 
 type StoreCollectionRequest struct {
 	CollectionID string `json:"collection_id" validate:"required"`
+	Name         string `json:"name" validate:"required"`
 }
 
 func StoreAPIKey(c echo.Context) error {
@@ -108,29 +109,50 @@ func StoreCollection(c echo.Context) error {
 	// Get API key
 	apiKey, err := db.GetPostmanAPIKey(userID)
 	if err != nil {
+		slog.Error("No API key found", "error", err, "user_id", userID)
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "No API key found. Please store your Postman API key first."})
 	}
 
 	var req StoreCollectionRequest
 	if err := c.Bind(&req); err != nil {
+		slog.Error("Invalid request", "error", err, "user_id", userID)
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request"})
 	}
 
 	if req.CollectionID == "" {
+		slog.Warn("Empty collection ID provided", "user_id", userID)
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Collection ID is required"})
+	}
+
+	if req.Name == "" {
+		slog.Warn("Empty collection name provided", "user_id", userID)
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Collection name is required"})
 	}
 
 	// Get collection from Postman
 	collection, err := postman.GetCollection(apiKey, req.CollectionID)
 	if err != nil {
+		slog.Error("Failed to fetch collection from Postman", "error", err, "user_id", userID, "collection_id", req.CollectionID)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch collection from Postman"})
 	}
 
-	// Store collection in database
-	if err := db.StoreCollection(collection.Collection.ID, collection.Collection.Name); err != nil {
+	// Convert collection to JSON for storage
+	content, err := json.Marshal(collection)
+	if err != nil {
+		slog.Error("Failed to marshal collection", "error", err, "user_id", userID, "collection_id", req.CollectionID)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to process collection data"})
+	}
+
+	// Store collection and create snapshot with custom name
+	if err := postman.StoreCollectionSnapshotWithName(req.CollectionID, req.Name, content); err != nil {
+		slog.Error("Failed to store collection snapshot", "error", err, "user_id", userID, "collection_id", req.CollectionID)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to store collection"})
 	}
 
+	slog.Info("Successfully stored collection",
+		"user_id", userID,
+		"collection_id", req.CollectionID,
+		"name", req.Name)
 	return c.JSON(http.StatusOK, map[string]string{"message": "Collection stored successfully"})
 }
 
