@@ -190,3 +190,30 @@ func GetCollectionDetails(c echo.Context) error {
 		"changes":    changes,
 	})
 }
+
+func CompareCollections(c echo.Context) error {
+	// Get user ID from JWT token
+	userID := c.Get("user_id").(int64)
+
+	// Get collection ID from path
+	collectionID := c.Param("id")
+	if collectionID == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Collection ID is required"})
+	}
+
+	// Get latest snapshots
+	latestSnapshot, previousSnapshot, err := db.GetLatestSnapshots(collectionID)
+	if err != nil {
+		slog.Error("Failed to get snapshots for comparison", "error", err, "user_id", userID, "collection_id", collectionID)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get snapshots for comparison"})
+	}
+
+	// Compare snapshots
+	result, err := db.CompareCollections(previousSnapshot, latestSnapshot)
+	if err != nil {
+		slog.Error("Failed to compare collections", "error", err, "user_id", userID, "collection_id", collectionID)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to compare collections"})
+	}
+
+	return c.JSON(http.StatusOK, result)
+}

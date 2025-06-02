@@ -24,4 +24,5 @@ func SetupRoutes(e *echo.Echo) {
 	collections.GET("", handlers.GetCollections)
 	collections.POST("/store", handlers.StoreCollection)
 	collections.GET("/:id/details", handlers.GetCollectionDetails)
+	collections.GET("/compare/:id", handlers.CompareCollections)
 }
