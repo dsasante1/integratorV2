@@ -4,7 +4,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
+
+	"integratorV2/internal/security"
 )
 
 type Collection struct {
@@ -127,32 +130,127 @@ func StoreCollection(id, name string) error {
 // }
 
 func StorePostmanAPIKey(userID int64, apiKey string) error {
-	_, err := DB.Exec(`
-		INSERT INTO postman_api_keys (user_id, api_key)
-		VALUES ($1, $2)
-	`, userID, apiKey)
-	return err
+	// Encrypt the API key
+	encryptedKey, err := security.EncryptAPIKey(apiKey)
+	if err != nil {
+		slog.Error("Failed to encrypt API key", "error", err, "user_id", userID)
+		return fmt.Errorf("failed to encrypt API key: %v", err)
+	}
+
+	// Calculate expiration date (90 days from now)
+	expiresAt := time.Now().Add(90 * 24 * time.Hour)
+
+	// Store encrypted key
+	_, err = DB.Exec(`
+		INSERT INTO postman_api_keys (
+			user_id, encrypted_key, key_version,
+			expires_at, last_rotated_at, is_active
+		)
+		VALUES ($1, $2, $3, $4, $5, $6)
+	`, userID, encryptedKey, 1, expiresAt, time.Now(), true)
+	if err != nil {
+		slog.Error("Failed to store API key", "error", err, "user_id", userID)
+		return fmt.Errorf("failed to store API key: %v", err)
+	}
+
+	slog.Info("Successfully stored API key", "user_id", userID)
+	return nil
 }
 
 func GetPostmanAPIKey(userID int64) (string, error) {
-	var apiKey string
-	err := DB.Get(&apiKey, `
-		SELECT api_key FROM postman_api_keys
+	var encryptedKey string
+	err := DB.Get(&encryptedKey, `
+		SELECT encrypted_key FROM postman_api_keys
 		WHERE user_id = $1
+		AND is_active = true
+		AND expires_at > NOW()
 		ORDER BY created_at DESC
 		LIMIT 1
 	`, userID)
 	if err == sql.ErrNoRows {
-		return "", fmt.Errorf("no API key found for user")
+		slog.Warn("No active API key found", "user_id", userID)
+		return "", fmt.Errorf("no active API key found for user")
 	}
-	return apiKey, err
+	if err != nil {
+		slog.Error("Failed to get API key", "error", err, "user_id", userID)
+		return "", fmt.Errorf("failed to get API key: %v", err)
+	}
+
+	// Decrypt the API key
+	apiKey, err := security.DecryptAPIKey(encryptedKey)
+	if err != nil {
+		slog.Error("Failed to decrypt API key", "error", err, "user_id", userID)
+		return "", fmt.Errorf("failed to decrypt API key: %v", err)
+	}
+
+	slog.Info("Successfully retrieved API key", "user_id", userID)
+	return apiKey, nil
+}
+
+func RotateAPIKey(userID int64, newAPIKey string) error {
+	// Encrypt the new API key
+	encryptedKey, err := security.EncryptAPIKey(newAPIKey)
+	if err != nil {
+		slog.Error("Failed to encrypt new API key", "error", err, "user_id", userID)
+		return fmt.Errorf("failed to encrypt API key: %v", err)
+	}
+
+	// Calculate new expiration date
+	expiresAt := time.Now().Add(90 * 24 * time.Hour)
+
+	// Start transaction
+	tx, err := DB.Begin()
+	if err != nil {
+		slog.Error("Failed to begin transaction", "error", err, "user_id", userID)
+		return fmt.Errorf("failed to begin transaction: %v", err)
+	}
+	defer tx.Rollback()
+
+	// Deactivate old keys
+	_, err = tx.Exec(`
+		UPDATE postman_api_keys
+		SET is_active = false
+		WHERE user_id = $1 AND is_active = true
+	`, userID)
+	if err != nil {
+		slog.Error("Failed to deactivate old keys", "error", err, "user_id", userID)
+		return fmt.Errorf("failed to deactivate old keys: %v", err)
+	}
+
+	// Insert new key
+	_, err = tx.Exec(`
+		INSERT INTO postman_api_keys (
+			user_id, encrypted_key, key_version,
+			expires_at, last_rotated_at, is_active
+		)
+		VALUES ($1, $2, $3, $4, $5, $6)
+	`, userID, encryptedKey, 1, expiresAt, time.Now(), true)
+	if err != nil {
+		slog.Error("Failed to insert new key", "error", err, "user_id", userID)
+		return fmt.Errorf("failed to insert new key: %v", err)
+	}
+
+	// Commit transaction
+	if err := tx.Commit(); err != nil {
+		slog.Error("Failed to commit transaction", "error", err, "user_id", userID)
+		return fmt.Errorf("failed to commit transaction: %v", err)
+	}
+
+	slog.Info("Successfully rotated API key", "user_id", userID)
+	return nil
 }
 
 func UpdateLastUsedAPIKey(userID int64) error {
 	_, err := DB.Exec(`
 		UPDATE postman_api_keys
 		SET last_used_at = CURRENT_TIMESTAMP
-		WHERE user_id = $1
+		WHERE user_id = $1 AND is_active = true
 	`, userID)
-	return err
+	if err != nil {
+		slog.Error("Failed to update last used timestamp", "error", err, "user_id", userID)
+		return fmt.Errorf("failed to update last used timestamp: %v", err)
+	}
+
+	slog.Info("Successfully updated last used timestamp", "user_id", userID)
+	return nil
 }

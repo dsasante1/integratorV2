@@ -17,6 +17,11 @@ func main() {
 	// Initialize security features
 	security.InitSecurity()
 
+	// Initialize AWS KMS
+	if err := security.InitKMS(); err != nil {
+		panic(err)
+	}
+
 	// Create Echo instance
 	e := echo.New()
 
@@ -39,6 +44,7 @@ func main() {
 
 	// User routes
 	protectedV1.POST("/api-key", handlers.StoreAPIKey)
+	protectedV1.POST("/api-key/rotate", handlers.RotateAPIKey)
 	protectedV1.GET("/collections", handlers.GetCollections)
 	protectedV1.POST("/collections/store", handlers.StoreCollection)
 	protectedV1.GET("/collections/:id/details", handlers.GetCollectionDetails)

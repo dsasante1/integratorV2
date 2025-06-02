@@ -20,7 +20,8 @@ func SetupRoutes(e *echo.Echo) {
 	// Collection routes
 	collections := api.Group("/collections")
 	collections.POST("/api-key", handlers.StoreAPIKey)
+	collections.POST("/api-key/rotate", handlers.RotateAPIKey)
 	collections.GET("", handlers.GetCollections)
 	collections.POST("/store", handlers.StoreCollection)
 	collections.GET("/:id/details", handlers.GetCollectionDetails)
-} 
+}
