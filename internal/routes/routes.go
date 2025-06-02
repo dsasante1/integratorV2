@@ -28,7 +28,7 @@ func SetupRoutes(api *echo.Group) {
 	collections.GET("", handlers.GetCollections)
 	collections.POST("/store", handlers.StoreCollection)
 	collections.GET("/:id/details", handlers.GetCollectionDetails)
-
+	collections.GET("/compare/:id", handlers.CompareCollections)
 	// Job routes
 	jobs := api.Group("/jobs")
 	jobs.GET("", handlers.GetUserJobs)

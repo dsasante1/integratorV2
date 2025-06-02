@@ -50,6 +50,7 @@ func main() {
 	// Middleware
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
+	e.Use(middleware.Gzip())
 	e.Use(security.RateLimiter)
 	e.Use(security.ValidateEmail)
 
