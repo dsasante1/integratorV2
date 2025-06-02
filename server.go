@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -77,7 +78,12 @@ func main() {
 
 		slog.Info("Shutting down...")
 		cancel() // Stop the worker
-		if err := e.Shutdown(context.Background()); err != nil {
+
+		// Create a timeout context for shutdown
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer shutdownCancel()
+
+		if err := e.Shutdown(shutdownCtx); err != nil {
 			slog.Error("Error shutting down server", "error", err)
 		}
 	}()
