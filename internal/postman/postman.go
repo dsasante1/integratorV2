@@ -89,6 +89,16 @@ func GetCollection(apiKey, collectionID string) (*PostmanCollectionResponse, err
 }
 
 func StoreCollectionSnapshot(collectionID string, content json.RawMessage) error {
+	// First, store the collection
+	var collection PostmanCollectionResponse
+	if err := json.Unmarshal(content, &collection); err != nil {
+		return fmt.Errorf("error unmarshaling collection: %v", err)
+	}
+
+	if err := db.StoreCollection(collectionID, collection.Collection.Name); err != nil {
+		return fmt.Errorf("error storing collection: %v", err)
+	}
+
 	// Calculate hash of content
 	hash := fmt.Sprintf("%x", content)
 
@@ -139,16 +149,6 @@ func StoreCollectionSnapshot(collectionID string, content json.RawMessage) error
 				return fmt.Errorf("error storing change: %v", err)
 			}
 		}
-	}
-
-	// Update collection last_seen
-	_, err = db.DB.Exec(`
-		UPDATE collections
-		SET last_seen = CURRENT_TIMESTAMP
-		WHERE id = $1
-	`, collectionID)
-	if err != nil {
-		return fmt.Errorf("error updating collection last_seen: %v", err)
 	}
 
 	return nil

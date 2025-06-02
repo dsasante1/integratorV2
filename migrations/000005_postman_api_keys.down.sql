@@ -1,1 +1,1 @@
-DROP TABLE IF NOT EXISTS postman_api_keys;
+DROP TABLE IF EXISTS postman_api_keys;
