@@ -157,7 +157,7 @@ func StoreCollection(c echo.Context) error {
 	})
 }
 
-func GetCollectionDetails(c echo.Context) error {
+func GetCollection(c echo.Context) error {
 	// Get user ID from JWT token
 	userID := c.Get("user_id").(int64)
 
@@ -165,6 +165,22 @@ func GetCollectionDetails(c echo.Context) error {
 	collectionID := c.Param("id")
 	if collectionID == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Collection ID is required"})
+	}
+
+	// Get pagination parameters with defaults
+	page := 1
+	pageSize := 10
+
+	if pageStr := c.QueryParam("page"); pageStr != "" {
+		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+			page = p
+		}
+	}
+
+	if pageSizeStr := c.QueryParam("page_size"); pageSizeStr != "" {
+		if ps, err := strconv.Atoi(pageSizeStr); err == nil && ps > 0 && ps <= 100 {
+			pageSize = ps
+		}
 	}
 
 	// Get API key
@@ -185,32 +201,158 @@ func GetCollectionDetails(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to store collection snapshot"})
 	}
 
-	// Get snapshots
-	var snapshots []db.Snapshot
-	err = db.DB.Select(&snapshots, `
-		SELECT * FROM snapshots
+	// Parse the items from the collection
+	var items []interface{}
+	if err := json.Unmarshal(collection.Collection.Item, &items); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to parse collection items"})
+	}
+
+	// Calculate pagination for items
+	totalItems := len(items)
+	start := (page - 1) * pageSize
+	end := start + pageSize
+	if end > totalItems {
+		end = totalItems
+	}
+
+	// Get paginated items
+	var paginatedItems []interface{}
+	if start < totalItems {
+		paginatedItems = items[start:end]
+	}
+
+	// Create paginated response
+	response := map[string]interface{}{
+		"id":   collection.Collection.ID,
+		"name": collection.Collection.Name,
+		"info": collection.Collection.Info,
+		"item": paginatedItems,
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"data": response,
+		"pagination": map[string]interface{}{
+			"page":        page,
+			"page_size":   pageSize,
+			"total":       totalItems,
+			"total_pages": (totalItems + pageSize - 1) / pageSize,
+		},
+	})
+}
+
+func GetCollectionSnapshots(c echo.Context) error {
+	// Get collection ID from path
+	collectionID := c.Param("id")
+	if collectionID == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Collection ID is required"})
+	}
+
+	// Get pagination parameters with defaults
+	page := 1
+	pageSize := 10
+
+	if pageStr := c.QueryParam("page"); pageStr != "" {
+		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+			page = p
+		}
+	}
+
+	if pageSizeStr := c.QueryParam("page_size"); pageSizeStr != "" {
+		if ps, err := strconv.Atoi(pageSizeStr); err == nil && ps > 0 && ps <= 100 {
+			pageSize = ps
+		}
+	}
+
+	offset := (page - 1) * pageSize
+
+	// Get total count of snapshots
+	var totalSnapshots int
+	err := db.DB.Get(&totalSnapshots, `
+		SELECT COUNT(*) FROM snapshots
 		WHERE collection_id = $1
-		ORDER BY snapshot_time DESC
 	`, collectionID)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch collection history"})
 	}
 
-	// Get changes
-	var changes []db.Change
-	err = db.DB.Select(&changes, `
-		SELECT * FROM changes
+	// Get paginated snapshots
+	var snapshots []db.Snapshot
+	err = db.DB.Select(&snapshots, `
+		SELECT * FROM snapshots
 		WHERE collection_id = $1
-		ORDER BY change_time DESC
+		ORDER BY snapshot_time DESC
+		LIMIT $2 OFFSET $3
+	`, collectionID, pageSize, offset)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch collection history"})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"data": snapshots,
+		"pagination": map[string]interface{}{
+			"page":        page,
+			"page_size":   pageSize,
+			"total":       totalSnapshots,
+			"total_pages": (totalSnapshots + pageSize - 1) / pageSize,
+		},
+	})
+}
+
+func GetCollectionChanges(c echo.Context) error {
+	// Get collection ID from path
+	collectionID := c.Param("id")
+	if collectionID == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Collection ID is required"})
+	}
+
+	// Get pagination parameters with defaults
+	page := 1
+	pageSize := 10
+
+	if pageStr := c.QueryParam("page"); pageStr != "" {
+		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+			page = p
+		}
+	}
+
+	if pageSizeStr := c.QueryParam("page_size"); pageSizeStr != "" {
+		if ps, err := strconv.Atoi(pageSizeStr); err == nil && ps > 0 && ps <= 100 {
+			pageSize = ps
+		}
+	}
+
+	offset := (page - 1) * pageSize
+
+	// Get total count of changes
+	var totalChanges int
+	err := db.DB.Get(&totalChanges, `
+		SELECT COUNT(*) FROM changes
+		WHERE collection_id = $1
 	`, collectionID)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch collection changes"})
 	}
 
+	// Get paginated changes
+	var changes []db.Change
+	err = db.DB.Select(&changes, `
+		SELECT * FROM changes
+		WHERE collection_id = $1
+		ORDER BY change_time DESC
+		LIMIT $2 OFFSET $3
+	`, collectionID, pageSize, offset)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch collection changes"})
+	}
+
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"collection": collection,
-		"snapshots":  snapshots,
-		"changes":    changes,
+		"data": changes,
+		"pagination": map[string]interface{}{
+			"page":        page,
+			"page_size":   pageSize,
+			"total":       totalChanges,
+			"total_pages": (totalChanges + pageSize - 1) / pageSize,
+		},
 	})
 }
 
