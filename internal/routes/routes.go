@@ -3,6 +3,7 @@ package routes
 import (
 	"integratorV2/internal/auth"
 	"integratorV2/internal/handlers"
+	"integratorV2/internal/security"
 
 	"github.com/labstack/echo/v4"
 )
@@ -10,11 +11,14 @@ import (
 func SetupRoutes(api *echo.Group) {
 	// Public routes
 	api.GET("/health", handlers.HealthCheck)
-	api.POST("/signup", handlers.Signup)
-	api.POST("/login", handlers.Login)
+
+	// Auth routes with email validation
+	authGroup := api.Group("/auth")
+	authGroup.Use(security.ValidateEmail)
+	authGroup.POST("/signup", handlers.Signup)
+	authGroup.POST("/login", handlers.Login)
 
 	// Protected routes
-
 	api.Use(auth.JWTMiddleware)
 
 	// Collection routes
