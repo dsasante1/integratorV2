@@ -7,14 +7,14 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-func SetupRoutes(e *echo.Echo) {
+func SetupRoutes(api *echo.Group) {
 	// Public routes
-	e.GET("/health", handlers.HealthCheck)
-	e.POST("/signup", handlers.Signup)
-	e.POST("/login", handlers.Login)
+	api.GET("/health", handlers.HealthCheck)
+	api.POST("/signup", handlers.Signup)
+	api.POST("/login", handlers.Login)
 
 	// Protected routes
-	api := e.Group("/api")
+
 	api.Use(auth.JWTMiddleware)
 
 	// Collection routes
@@ -24,4 +24,9 @@ func SetupRoutes(e *echo.Echo) {
 	collections.GET("", handlers.GetCollections)
 	collections.POST("/store", handlers.StoreCollection)
 	collections.GET("/:id/details", handlers.GetCollectionDetails)
+
+	// Job routes
+	jobs := api.Group("/jobs")
+	jobs.GET("", handlers.GetUserJobs)
+	jobs.GET("/:id", handlers.GetJobStatus)
 }
