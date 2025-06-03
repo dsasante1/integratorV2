@@ -33,6 +33,7 @@ func NewWorker() *Worker {
 			Concurrency: 10,
 			Queues: map[string]int{
 				queue.QueueCollectionImport: 10,
+				queue.QueueKMSRotation:      1,
 			},
 		},
 	)
@@ -48,17 +49,25 @@ func (w *Worker) Start(ctx context.Context) error {
 
 	// Register task handlers
 	mux.HandleFunc(queue.QueueCollectionImport, w.handleCollectionImport)
+	mux.HandleFunc(queue.QueueKMSRotation, w.HandleKMSRotation)
+
+	slog.Info("Starting worker",
+		"queues", []string{queue.QueueCollectionImport, queue.QueueKMSRotation},
+		"concurrency", 10)
 
 	// Start server
 	if err := w.server.Start(mux); err != nil {
 		return err
 	}
 
+	slog.Info("Worker started successfully")
+
 	// Wait for context cancellation
 	<-ctx.Done()
 
 	// Stop server
 	w.server.Stop()
+	slog.Info("Worker stopped")
 	return nil
 }
 

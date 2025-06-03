@@ -1,4 +1,4 @@
-package security
+package config
 
 import (
 	"context"
@@ -13,11 +13,11 @@ import (
 )
 
 var (
-	kmsClient *kms.Client
-	kmsKeyID  string
+	KMSKeyID  string
+	KMSClient *kms.Client
 )
 
-// InitKMS initializes the AWS KMS client
+// InitKMS initializes the AWS KMS client and configuration
 func InitKMS() error {
 	// Load AWS configuration
 	cfg, err := config.LoadDefaultConfig(context.TODO())
@@ -27,11 +27,11 @@ func InitKMS() error {
 	}
 
 	// Create KMS client
-	kmsClient = kms.NewFromConfig(cfg)
+	KMSClient = kms.NewFromConfig(cfg)
 
 	// Get KMS key ID from environment
-	kmsKeyID = os.Getenv("AWS_KMS_KEY_ID")
-	if kmsKeyID == "" {
+	KMSKeyID = os.Getenv("AWS_KMS_KEY_ID")
+	if KMSKeyID == "" {
 		slog.Error("Missing required environment variable", "variable", "AWS_KMS_KEY_ID")
 		return fmt.Errorf("AWS_KMS_KEY_ID environment variable is required")
 	}
@@ -42,18 +42,18 @@ func InitKMS() error {
 
 // EncryptAPIKey encrypts an API key using AWS KMS
 func EncryptAPIKey(apiKey string) (string, error) {
-	if kmsClient == nil {
+	if KMSClient == nil {
 		slog.Error("KMS client not initialized")
 		return "", fmt.Errorf("KMS client not initialized")
 	}
 
 	// Encrypt the API key
 	input := &kms.EncryptInput{
-		KeyId:     aws.String(kmsKeyID),
+		KeyId:     aws.String(KMSKeyID),
 		Plaintext: []byte(apiKey),
 	}
 
-	result, err := kmsClient.Encrypt(context.TODO(), input)
+	result, err := KMSClient.Encrypt(context.TODO(), input)
 	if err != nil {
 		slog.Error("Failed to encrypt API key", "error", err)
 		return "", fmt.Errorf("failed to encrypt API key: %v", err)
@@ -65,7 +65,7 @@ func EncryptAPIKey(apiKey string) (string, error) {
 
 // DecryptAPIKey decrypts an API key using AWS KMS
 func DecryptAPIKey(encryptedKey string) (string, error) {
-	if kmsClient == nil {
+	if KMSClient == nil {
 		slog.Error("KMS client not initialized")
 		return "", fmt.Errorf("KMS client not initialized")
 	}
@@ -82,7 +82,7 @@ func DecryptAPIKey(encryptedKey string) (string, error) {
 		CiphertextBlob: ciphertext,
 	}
 
-	result, err := kmsClient.Decrypt(context.TODO(), input)
+	result, err := KMSClient.Decrypt(context.TODO(), input)
 	if err != nil {
 		slog.Error("Failed to decrypt API key", "error", err)
 		return "", fmt.Errorf("failed to decrypt API key: %v", err)

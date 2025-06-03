@@ -7,6 +7,9 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"golang.org/x/time/rate"
+
+	"integratorV2/internal/config"
+	"integratorV2/internal/kms"
 )
 
 var (
@@ -19,12 +22,21 @@ var (
 	emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
 )
 
-// InitSecurity initializes security features
+// InitSecurity initializes all security features
 func InitSecurity() error {
 	// Initialize rate limiters
-	rateLimitMutex.Lock()
-	defer rateLimitMutex.Unlock()
-	rateLimiters = make(map[string]*rate.Limiter)
+	initRateLimiters()
+
+	// Initialize KMS
+	if err := config.InitKMS(); err != nil {
+		return err
+	}
+
+	// Initialize KMS rotation
+	if err := kms.InitRotation(); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -70,4 +82,10 @@ func ValidateEmail(next echo.HandlerFunc) echo.HandlerFunc {
 
 		return next(c)
 	}
+}
+
+func initRateLimiters() {
+	rateLimitMutex.Lock()
+	defer rateLimitMutex.Unlock()
+	rateLimiters = make(map[string]*rate.Limiter)
 }

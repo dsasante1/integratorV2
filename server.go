@@ -25,24 +25,18 @@ func main() {
 	}
 	defer db.Close()
 
-	// Initialize security features
-	if err := security.InitSecurity(); err != nil {
-		slog.Error("Failed to initialize security features", "error", err)
-		os.Exit(1)
-	}
-
-	// Initialize AWS KMS
-	if err := security.InitKMS(); err != nil {
-		slog.Error("Failed to initialize AWS KMS", "error", err)
-		os.Exit(1)
-	}
-
 	// Initialize task queue
 	if err := queue.InitQueue(); err != nil {
 		slog.Error("Failed to initialize task queue", "error", err)
 		os.Exit(1)
 	}
 	defer queue.Close()
+
+	// Initialize security features
+	if err := security.InitSecurity(); err != nil {
+		slog.Error("Failed to initialize security features", "error", err)
+		os.Exit(1)
+	}
 
 	// Create Echo instance
 	e := echo.New()
