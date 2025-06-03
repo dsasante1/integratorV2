@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"time"
 
-	"integratorV2/internal/security"
+	"integratorV2/internal/config"
 )
 
 type Collection struct {
@@ -142,7 +142,7 @@ func StoreCollection(id, name string) error {
 
 func StorePostmanAPIKey(userID int64, apiKey string) error {
 	// Encrypt the API key
-	encryptedKey, err := security.EncryptAPIKey(apiKey)
+	encryptedKey, err := config.EncryptAPIKey(apiKey)
 	if err != nil {
 		slog.Error("Failed to encrypt API key", "error", err, "user_id", userID)
 		return fmt.Errorf("failed to encrypt API key: %v", err)
@@ -188,7 +188,7 @@ func GetPostmanAPIKey(userID int64) (string, error) {
 	}
 
 	// Decrypt the API key
-	apiKey, err := security.DecryptAPIKey(encryptedKey)
+	apiKey, err := config.DecryptAPIKey(encryptedKey)
 	if err != nil {
 		slog.Error("Failed to decrypt API key", "error", err, "user_id", userID)
 		return "", fmt.Errorf("failed to decrypt API key: %v", err)
@@ -200,7 +200,7 @@ func GetPostmanAPIKey(userID int64) (string, error) {
 
 func RotateAPIKey(userID int64, newAPIKey string) error {
 	// Encrypt the new API key
-	encryptedKey, err := security.EncryptAPIKey(newAPIKey)
+	encryptedKey, err := config.EncryptAPIKey(newAPIKey)
 	if err != nil {
 		slog.Error("Failed to encrypt new API key", "error", err, "user_id", userID)
 		return fmt.Errorf("failed to encrypt API key: %v", err)
