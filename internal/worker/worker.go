@@ -93,8 +93,16 @@ func (w *Worker) handleCollectionImport(ctx context.Context, t *asynq.Task) erro
 		return err
 	}
 
+	// Mask sensitive data in the collection
+	maskedCollection, err := postman.MaskCollection(collection)
+	if err != nil {
+		errMsg := "Failed to mask sensitive data in collection"
+		slog.Error(errMsg, "error", err, "user_id", payload.UserID, "collection_id", payload.CollectionID)
+		return err
+	}
+
 	// Convert collection to JSON for storage
-	content, err := json.Marshal(collection)
+	content, err := json.Marshal(maskedCollection)
 	if err != nil {
 		errMsg := "Failed to process collection data"
 		slog.Error(errMsg, "error", err, "user_id", payload.UserID, "collection_id", payload.CollectionID)

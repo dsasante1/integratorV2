@@ -195,8 +195,15 @@ func GetCollection(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch collection from Postman"})
 	}
 
+	// Mask sensitive data in the collection
+	maskedCollection, err := postman.MaskCollection(collection)
+	if err != nil {
+		slog.Error("Failed to mask sensitive data", "error", err, "user_id", userID, "collection_id", collectionID)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to process collection data"})
+	}
+
 	// Store collection content as snapshot
-	content, _ := json.Marshal(collection)
+	content, _ := json.Marshal(maskedCollection)
 	if err := postman.StoreCollectionSnapshot(collectionID, content); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to store collection snapshot"})
 	}

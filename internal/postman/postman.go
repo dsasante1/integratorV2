@@ -12,21 +12,21 @@ const (
 )
 
 type PostmanCollection struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID   string `json:"id" validate:"required"`
+	Name string `json:"name" validate:"required"`
 }
 
 type PostmanCollectionsResponse struct {
-	Collections []PostmanCollection `json:"collections"`
+	Collections []PostmanCollection `json:"collections" validate:"required,dive"`
 }
 
 type PostmanCollectionResponse struct {
 	Collection struct {
-		ID   string          `json:"id"`
-		Name string          `json:"name"`
-		Info json.RawMessage `json:"info"`
-		Item json.RawMessage `json:"item"`
-	} `json:"collection"`
+		ID   string          `json:"id" validate:"required"`
+		Name string          `json:"name" validate:"required"`
+		Info json.RawMessage `json:"info" validate:"required"`
+		Item json.RawMessage `json:"item" validate:"required"`
+	} `json:"collection" validate:"required"`
 }
 
 type Change struct {
