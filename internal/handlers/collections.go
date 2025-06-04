@@ -5,7 +5,9 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"time"
 
+	"integratorV2/internal/config"
 	"integratorV2/internal/db"
 	"integratorV2/internal/postman"
 	"integratorV2/internal/queue"
@@ -24,6 +26,16 @@ type RotateAPIKeyRequest struct {
 type StoreCollectionRequest struct {
 	CollectionID string `json:"collection_id" validate:"required"`
 	Name         string `json:"name" validate:"required"`
+}
+
+type APIKeyResponse struct {
+	ID            int64     `json:"id"`
+	CreatedAt     time.Time `json:"created_at"`
+	LastUsedAt    time.Time `json:"last_used_at"`
+	LastRotatedAt time.Time `json:"last_rotated_at"`
+	ExpiresAt     time.Time `json:"expires_at"`
+	IsActive      bool      `json:"is_active"`
+	MaskedKey     string    `json:"masked_key"`
 }
 
 func StoreAPIKey(c echo.Context) error {
@@ -433,4 +445,75 @@ func CompareCollections(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, result)
+}
+
+func maskAPIKey(key string) string {
+	if len(key) < 8 {
+		return "PMAK-XXXXXXXXXXXX"
+	}
+	// Show first 6 and last 4 characters, mask the middle with 8 X's
+	prefix := key[:6]
+	suffix := key[len(key)-4:]
+	return prefix + "XXXXXXXXXXXXX" + suffix
+}
+
+func GetAPIKeys(c echo.Context) error {
+	// Get user ID from JWT token
+	userID := c.Get("user_id").(int64)
+
+	// Get API key info
+	keys, err := db.GetAPIKeyInfo(userID)
+	if err != nil {
+		slog.Error("Failed to get API keys", "error", err, "user_id", userID)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get API keys"})
+	}
+
+	// Process each key
+	var response []APIKeyResponse
+	for _, key := range keys {
+		// Decrypt the API key
+		decryptedKey, err := config.DecryptAPIKey(key.EncryptedKey)
+		if err != nil {
+			slog.Error("Failed to decrypt API key", "error", err, "user_id", userID, "key_id", key.ID)
+			continue
+		}
+
+		// Create response with masked key
+		response = append(response, APIKeyResponse{
+			ID:            key.ID,
+			CreatedAt:     key.CreatedAt,
+			LastUsedAt:    key.LastUsedAt,
+			LastRotatedAt: key.LastRotatedAt,
+			ExpiresAt:     key.ExpiresAt,
+			IsActive:      key.IsActive,
+			MaskedKey:     maskAPIKey(decryptedKey),
+		})
+	}
+
+	return c.JSON(http.StatusOK, response)
+}
+
+func DeleteAPIKey(c echo.Context) error {
+	// Get user ID from JWT token
+	userID := c.Get("user_id").(int64)
+
+	// Get key ID from path
+	keyID := c.Param("id")
+	if keyID == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Key ID is required"})
+	}
+
+	// Convert key ID to int64
+	id, err := strconv.ParseInt(keyID, 10, 64)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid key ID"})
+	}
+
+	// Delete API key
+	if err := db.DeleteAPIKey(id, userID); err != nil {
+		slog.Error("Failed to delete API key", "error", err, "user_id", userID, "key_id", id)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to delete API key"})
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{"message": "API key deleted successfully"})
 }
