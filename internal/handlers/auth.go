@@ -72,12 +72,12 @@ func Login(c echo.Context) error {
 	// Get user by email
 	user, err := auth.GetUserByEmail(req.Email)
 	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid credentials"})
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid email or password"})
 	}
 
 	// Verify password
 	if err := auth.VerifyPassword(user.Password, req.Password); err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid credentials"})
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid email or password"})
 	}
 
 	// Generate token
