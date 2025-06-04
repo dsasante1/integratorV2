@@ -48,6 +48,16 @@ type CollectionJob struct {
 	UpdatedAt    time.Time `db:"updated_at" json:"updated_at"`
 }
 
+type APIKeyInfo struct {
+	ID            int64     `db:"id" json:"id"`
+	CreatedAt     time.Time `db:"created_at" json:"created_at"`
+	LastUsedAt    time.Time `db:"last_used_at" json:"last_used_at"`
+	LastRotatedAt time.Time `db:"last_rotated_at" json:"last_rotated_at"`
+	ExpiresAt     time.Time `db:"expires_at" json:"expires_at"`
+	IsActive      bool      `db:"is_active" json:"is_active"`
+	EncryptedKey  string    `db:"encrypted_key" json:"-"`
+}
+
 func StoreCollection(id, name string) error {
 	_, err := DB.Exec(`
 		INSERT INTO collections (id, name)
@@ -322,4 +332,39 @@ func GetUserCollectionJobs(userID int64) ([]CollectionJob, error) {
 		return nil, fmt.Errorf("failed to get user collection jobs: %v", err)
 	}
 	return jobs, nil
+}
+
+func GetAPIKeyInfo(userID int64) ([]APIKeyInfo, error) {
+	var keys []APIKeyInfo
+	err := DB.Select(&keys, `
+		SELECT id, created_at, last_used_at, last_rotated_at, expires_at, is_active, encrypted_key
+		FROM postman_api_keys
+		WHERE user_id = $1
+		ORDER BY created_at DESC
+	`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get API key info: %v", err)
+	}
+	return keys, nil
+}
+
+func DeleteAPIKey(keyID int64, userID int64) error {
+	result, err := DB.Exec(`
+		DELETE FROM postman_api_keys
+		WHERE id = $1 AND user_id = $2
+	`, keyID, userID)
+	if err != nil {
+		return fmt.Errorf("failed to delete API key: %v", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %v", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("no API key found with ID %d for user %d", keyID, userID)
+	}
+
+	return nil
 }
