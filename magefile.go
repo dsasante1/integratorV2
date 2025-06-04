@@ -4,9 +4,10 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
+
+	"log/slog"
 
 	"github.com/joho/godotenv"
 )
@@ -96,7 +97,7 @@ func MigrateDrop() error {
 
 func loadEnv() error {
 	if err := godotenv.Load(); err != nil {
-		log.Printf("Warning: .env file not found: %v", err)
+		slog.Warn("Warning: .env file not found", "error", err)
 	}
 	return nil
 }
