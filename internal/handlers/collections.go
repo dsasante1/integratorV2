@@ -216,7 +216,7 @@ func GetCollection(c echo.Context) error {
 
 	// Store collection content as snapshot
 	content, _ := json.Marshal(maskedCollection)
-	if err := postman.StoreCollectionSnapshot(collectionID, content); err != nil {
+	if err := postman.StoreCollectionSnapshot(collectionID, content, userID); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to store collection snapshot"})
 	}
 
@@ -516,4 +516,18 @@ func DeleteAPIKey(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{"message": "API key deleted successfully"})
+}
+
+func GetUserCollections(c echo.Context) error {
+	// Get user ID from JWT token
+	userID := c.Get("user_id").(int64)
+
+	// Get collections for the user
+	collections, err := db.GetUserCollections(userID)
+	if err != nil {
+		slog.Error("Failed to get user collections", "error", err, "user_id", userID)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get collections"})
+	}
+
+	return c.JSON(http.StatusOK, collections)
 }

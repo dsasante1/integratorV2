@@ -110,7 +110,7 @@ func (w *Worker) handleCollectionImport(ctx context.Context, t *asynq.Task) erro
 	}
 
 	// Store collection and create snapshot with custom name
-	if err := postman.StoreCollectionSnapshotWithName(payload.CollectionID, payload.Name, content); err != nil {
+	if err := postman.StoreCollectionSnapshotWithName(payload.CollectionID, payload.Name, content, payload.UserID); err != nil {
 		errMsg := "Failed to store collection"
 		slog.Error(errMsg, "error", err, "user_id", payload.UserID, "collection_id", payload.CollectionID)
 		return err

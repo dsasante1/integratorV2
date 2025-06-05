@@ -1,0 +1,1 @@
+ALTER TABLE IF EXISTS collections DROP COLUMN IF EXISTS user_id;

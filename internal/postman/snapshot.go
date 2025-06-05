@@ -11,7 +11,7 @@ import (
 
 // StoreCollectionSnapshot orchestrates the process of storing a collection snapshot
 // and tracking any changes from the previous snapshot
-func StoreCollectionSnapshot(collectionID string, content json.RawMessage) error {
+func StoreCollectionSnapshot(collectionID string, content json.RawMessage, userID int64,) error {
 	slog.Info("Starting collection snapshot process", "collection_id", collectionID)
 
 	// Parse collection metadata
@@ -22,7 +22,7 @@ func StoreCollectionSnapshot(collectionID string, content json.RawMessage) error
 	}
 
 	// Store collection metadata
-	if err := storeCollectionMetadata(collectionID, collection.Collection.Name); err != nil {
+	if err := storeCollectionMetadata(collectionID, collection.Collection.Name, userID); err != nil {
 		slog.Error("Failed to store collection metadata", "error", err, "collection_id", collectionID)
 		return err
 	}
@@ -46,11 +46,11 @@ func StoreCollectionSnapshot(collectionID string, content json.RawMessage) error
 
 // StoreCollectionSnapshotWithName orchestrates the process of storing a collection snapshot
 // with a custom name and tracking any changes from the previous snapshot
-func StoreCollectionSnapshotWithName(collectionID, name string, content json.RawMessage) error {
+func StoreCollectionSnapshotWithName(collectionID, name string, content json.RawMessage, userID int64) error {
 	slog.Info("Starting collection snapshot process", "collection_id", collectionID, "name", name)
 
 	// Store collection metadata with provided name
-	if err := storeCollectionMetadata(collectionID, name); err != nil {
+	if err := storeCollectionMetadata(collectionID, name, userID); err != nil {
 		slog.Error("Failed to store collection metadata", "error", err, "collection_id", collectionID)
 		return err
 	}
@@ -82,8 +82,8 @@ func parseCollectionMetadata(content json.RawMessage) (*PostmanCollectionRespons
 }
 
 // storeCollectionMetadata stores the basic collection information
-func storeCollectionMetadata(collectionID, name string) error {
-	if err := db.StoreCollection(collectionID, name); err != nil {
+func storeCollectionMetadata(collectionID, name string, userID int64) error {
+	if err := db.StoreCollection(collectionID, name, userID); err != nil {
 		return fmt.Errorf("error storing collection metadata: %v", err)
 	}
 	slog.Info("Stored collection metadata", "collection_id", collectionID, "name", name)

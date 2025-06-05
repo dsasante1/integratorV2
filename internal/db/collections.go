@@ -12,6 +12,7 @@ import (
 
 type Collection struct {
 	ID        string    `db:"id" json:"id"`
+	UserID    string    `db:"user_id" json:"user_id"`
 	Name      string    `db:"name" json:"name"`
 	FirstSeen time.Time `db:"first_seen" json:"first_seen"`
 	LastSeen  time.Time `db:"last_seen" json:"last_seen"`
@@ -58,97 +59,17 @@ type APIKeyInfo struct {
 	EncryptedKey  string    `db:"encrypted_key" json:"-"`
 }
 
-func StoreCollection(id, name string) error {
+func StoreCollection(id, name string, user_id int64) error {
 	_, err := DB.Exec(`
-		INSERT INTO collections (id, name)
-		VALUES ($1, $2)
+		INSERT INTO collections (id, name, user_id)
+		VALUES ($1, $2, $3)
 		ON CONFLICT (id) DO UPDATE
 		SET name = $2,
 		    last_seen = CURRENT_TIMESTAMP
-	`, id, name)
+	`, id, name, user_id)
 	return err
 }
 
-// func InitCollectionTables() error {
-// 	// Create users table first
-// 	_, err := DB.Exec(`
-// 		CREATE TABLE IF NOT EXISTS users (
-// 			id SERIAL PRIMARY KEY,
-// 			email VARCHAR(255) UNIQUE NOT NULL,
-// 			password VARCHAR(255) NOT NULL,
-// 			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-// 		)
-// 	`)
-// 	if err != nil {
-// 		return fmt.Errorf("error creating users table: %v", err)
-// 	}
-
-// 	// Create collections table
-// 	_, err = DB.Exec(`
-// 		CREATE TABLE IF NOT EXISTS collections (
-// 			id TEXT PRIMARY KEY,
-// 			name TEXT NOT NULL,
-// 			first_seen TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-// 			last_seen TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-// 		)
-// 	`)
-// 	if err != nil {
-// 		return fmt.Errorf("error creating collections table: %v", err)
-// 	}
-
-// 	// Create snapshots table
-// 	_, err = DB.Exec(`
-// 		CREATE TABLE IF NOT EXISTS snapshots (
-// 			id SERIAL PRIMARY KEY,
-// 			collection_id TEXT NOT NULL,
-// 			snapshot_time TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-// 			content JSONB NOT NULL,
-// 			hash TEXT NOT NULL,
-// 			FOREIGN KEY (collection_id) REFERENCES collections(id)
-// 		)
-// 	`)
-// 	if err != nil {
-// 		return fmt.Errorf("error creating snapshots table: %v", err)
-// 	}
-
-// 	// Create changes table
-// 	_, err = DB.Exec(`
-// 		CREATE TABLE IF NOT EXISTS changes (
-// 			id SERIAL PRIMARY KEY,
-// 			collection_id TEXT NOT NULL,
-// 			old_snapshot_id INTEGER,
-// 			new_snapshot_id INTEGER NOT NULL,
-// 			change_type TEXT NOT NULL,
-// 			path TEXT NOT NULL,
-// 			old_value TEXT,
-// 			new_value TEXT,
-// 			change_time TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-// 			FOREIGN KEY (collection_id) REFERENCES collections(id),
-// 			FOREIGN KEY (old_snapshot_id) REFERENCES snapshots(id),
-// 			FOREIGN KEY (new_snapshot_id) REFERENCES snapshots(id)
-// 		)
-// 	`)
-// 	if err != nil {
-// 		return fmt.Errorf("error creating changes table: %v", err)
-// 	}
-
-// 	// Create postman_api_keys table
-// 	_, err = DB.Exec(`
-// 		CREATE TABLE IF NOT EXISTS postman_api_keys (
-// 			id SERIAL PRIMARY KEY,
-// 			user_id INTEGER NOT NULL,
-// 			api_key TEXT NOT NULL,
-// 			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-// 			last_used_at TIMESTAMP WITH TIME ZONE,
-// 			FOREIGN KEY (user_id) REFERENCES users(id)
-// 		)
-// 	`)
-// 	if err != nil {
-// 		return fmt.Errorf("error creating postman_api_keys table: %v", err)
-// 	}
-
-// 	return nil
-// }
 
 func StorePostmanAPIKey(userID int64, apiKey string) error {
 	// Encrypt the API key
@@ -367,4 +288,17 @@ func DeleteAPIKey(keyID int64, userID int64) error {
 	}
 
 	return nil
+}
+
+func GetUserCollections(userID int64) ([]Collection, error) {
+	var collections []Collection
+	err := DB.Select(&collections, `
+		SELECT * FROM collections
+		WHERE user_id = $1
+		ORDER BY last_seen DESC
+	`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user collections: %v", err)
+	}
+	return collections, nil
 }
