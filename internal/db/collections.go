@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"log/slog"
+	"log/slog"	
 	"time"
 
 	"integratorV2/internal/config"
@@ -69,7 +69,6 @@ func StoreCollection(id, name string, user_id int64) error {
 	`, id, name, user_id)
 	return err
 }
-
 
 func StorePostmanAPIKey(userID int64, apiKey string) error {
 	// Encrypt the API key

@@ -38,6 +38,26 @@ type APIKeyResponse struct {
 	MaskedKey     string    `json:"masked_key"`
 }
 
+// Utility functions for pagination
+func getPage(c echo.Context) int {
+	page, _ := strconv.Atoi(c.QueryParam("page"))
+	if page < 1 {
+		return 1
+	}
+	return page
+}
+
+func getPageSize(c echo.Context) int {
+	pageSize, _ := strconv.Atoi(c.QueryParam("page_size"))
+	if pageSize < 1 {
+		return 10
+	}
+	if pageSize > 100 {
+		return 100
+	}
+	return pageSize
+}
+
 func StoreAPIKey(c echo.Context) error {
 	// Get user ID from JWT token
 	userID := c.Get("user_id").(int64)
@@ -116,11 +136,10 @@ func GetCollections(c echo.Context) error {
 	return c.JSON(http.StatusOK, collections)
 }
 
-func StoreCollection(c echo.Context) error {
-	// Get user ID from JWT token
+func SaveCollection(c echo.Context) error {
+
 	userID := c.Get("user_id").(int64)
 
-	// Get API key to verify it exists
 	_, err := db.GetPostmanAPIKey(userID)
 	if err != nil {
 		slog.Error("No API key found", "error", err, "user_id", userID)
@@ -143,14 +162,12 @@ func StoreCollection(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Collection name is required"})
 	}
 
-	// Create task payload
 	payload := queue.CollectionImportPayload{
 		UserID:       userID,
 		CollectionID: req.CollectionID,
 		Name:         req.Name,
 	}
 
-	// Enqueue task
 	taskID, err := queue.EnqueueCollectionImport(payload)
 	if err != nil {
 		slog.Error("Failed to enqueue collection import", "error", err, "user_id", userID)
@@ -170,16 +187,13 @@ func StoreCollection(c echo.Context) error {
 }
 
 func GetCollection(c echo.Context) error {
-	// Get user ID from JWT token
 	userID := c.Get("user_id").(int64)
 
-	// Get collection ID from path
 	collectionID := c.Param("id")
 	if collectionID == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Collection ID is required"})
 	}
 
-	// Get pagination parameters with defaults
 	page := 1
 	pageSize := 10
 
@@ -195,7 +209,6 @@ func GetCollection(c echo.Context) error {
 		}
 	}
 
-	// Get API key
 	apiKey, err := db.GetPostmanAPIKey(userID)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "No API key found. Please store your Postman API key first."})
@@ -260,61 +273,27 @@ func GetCollection(c echo.Context) error {
 }
 
 func GetCollectionSnapshots(c echo.Context) error {
-	// Get collection ID from path
 	collectionID := c.Param("id")
-	if collectionID == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Collection ID is required"})
+	page := getPage(c)
+	if page < 1 {
+		page = 1
 	}
-
-	// Get pagination parameters with defaults
-	page := 1
-	pageSize := 10
-
-	if pageStr := c.QueryParam("page"); pageStr != "" {
-		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
-			page = p
-		}
+	pageSize := getPageSize(c)
+	if pageSize < 1 {
+		pageSize = 10
 	}
-
-	if pageSizeStr := c.QueryParam("page_size"); pageSizeStr != "" {
-		if ps, err := strconv.Atoi(pageSizeStr); err == nil && ps > 0 && ps <= 100 {
-			pageSize = ps
-		}
-	}
-
 	offset := (page - 1) * pageSize
-
-	// Get total count of snapshots
-	var totalSnapshots int
-	err := db.DB.Get(&totalSnapshots, `
-		SELECT COUNT(*) FROM snapshots
-		WHERE collection_id = $1
-	`, collectionID)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch collection history"})
+	if offset < 0 {
+		offset = 0
 	}
 
-	// Get paginated snapshots
-	var snapshots []db.Snapshot
-	err = db.DB.Select(&snapshots, `
-		SELECT * FROM snapshots
-		WHERE collection_id = $1
-		ORDER BY snapshot_time DESC
-		LIMIT $2 OFFSET $3
-	`, collectionID, pageSize, offset)
+	snapshots, err := db.GetCollectionSnapshots(collectionID, offset, pageSize, page)
+	slog.Info("Error", "error", err)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch collection history"})
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch snapshots"})
 	}
 
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"data": snapshots,
-		"pagination": map[string]interface{}{
-			"page":        page,
-			"page_size":   pageSize,
-			"total":       totalSnapshots,
-			"total_pages": (totalSnapshots + pageSize - 1) / pageSize,
-		},
-	})
+	return c.JSON(http.StatusOK, snapshots)
 }
 
 func GetCollectionChanges(c echo.Context) error {
