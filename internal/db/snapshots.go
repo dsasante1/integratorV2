@@ -80,36 +80,41 @@ func GetSnapshotDetail(snapshotID string) (map[string]interface{}, error) {
 	}, nil
 }
 
-func GetSnapshotItems(snapshotID string, page int, pageSize int) (map[string]interface{}, error) {
+func GetSnapshotItems(snapshotID string, collectionID string, page int, pageSize int) (map[string]interface{}, error) {
 
-	var itemsInfo struct {
-		TotalItems int `json:"total_items"`
-		Exists     bool
+	var snapshotInfo struct {
+		TotalItems     int    `db:"total_items" json:"total_items"`
+		Exists         bool   `db:"exists" json:"exists"`
+		CollectionName string `db:"collection_name" json:"collection_name"`
 	}
-
-	err := DB.Get(&itemsInfo, `
-		SELECT 
+	
+	err := DB.Get(&snapshotInfo, `
+		SELECT
 			EXISTS(SELECT 1 FROM snapshots WHERE id = $1) as exists,
 			COALESCE(
 				jsonb_array_length(
 					content->'collection'->'collection'->'item'
 				), 0
-			) as total_items
+			) as total_items,
+			COALESCE(
+				content->'collection'->'collection'->>'name',
+				''
+			) as collection_name
 		FROM snapshots
-		WHERE id = $1
-	`, snapshotID)
-
+		WHERE id = $1 AND collection_id = $2
+	`, snapshotID, collectionID)
+	
 	if err != nil {
 		slog.Error("failed to fetch snapshot items", "error", err)
 		return nil, err
 	}
-
+	
 	var result struct {
 		Items json.RawMessage `json:"items"`
 	}
-
+	
 	err = DB.Get(&result, `
-		SELECT 
+		SELECT
 			COALESCE(
 				jsonb_agg(item)::jsonb,
 				'[]'::jsonb
@@ -123,19 +128,22 @@ func GetSnapshotItems(snapshotID string, page int, pageSize int) (map[string]int
 			LIMIT $2 OFFSET $3
 		) t
 	`, snapshotID, pageSize, (page-1)*pageSize)
+	
 	if err != nil {
 		slog.Error("failed to retrieve snapshot items", "error", err)
 		return nil, err
 	}
-
+	
 	return map[string]interface{}{
-		"snapshot_id": snapshotID,
-		"items":       result.Items,
+		"snapshot_id":     snapshotID,
+		"collection_id":   collectionID,
+		"destination_name": snapshotInfo.CollectionName,
+		"items":          result.Items,
 		"pagination": map[string]interface{}{
 			"page":        page,
 			"page_size":   pageSize,
-			"total_items": itemsInfo.TotalItems,
-			"total_pages": (itemsInfo.TotalItems + pageSize - 1) / pageSize,
+			"total_items": snapshotInfo.TotalItems,
+			"total_pages": (snapshotInfo.TotalItems + pageSize - 1) / pageSize,
 		},
 	}, nil
 }
