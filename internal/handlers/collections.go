@@ -59,7 +59,7 @@ func getPageSize(c echo.Context) int {
 }
 
 func StoreAPIKey(c echo.Context) error {
-	// Get user ID from JWT token
+	
 	userID := c.Get("user_id").(int64)
 
 	var req APIKeyRequest
@@ -84,7 +84,7 @@ func StoreAPIKey(c echo.Context) error {
 }
 
 func RotateAPIKey(c echo.Context) error {
-	// Get user ID from JWT token
+	
 	userID := c.Get("user_id").(int64)
 
 	var req RotateAPIKeyRequest
@@ -109,7 +109,7 @@ func RotateAPIKey(c echo.Context) error {
 }
 
 func GetCollections(c echo.Context) error {
-	// Get user ID from JWT token
+	
 	userID := c.Get("user_id").(int64)
 
 	// Get API key
@@ -297,7 +297,7 @@ func GetCollectionSnapshots(c echo.Context) error {
 }
 
 func GetCollectionChanges(c echo.Context) error {
-	// Get collection ID from path
+	
 	collectionID := c.Param("id")
 	if collectionID == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Collection ID is required"})
@@ -355,22 +355,20 @@ func GetCollectionChanges(c echo.Context) error {
 }
 
 func GetJobStatus(c echo.Context) error {
-	// Get user ID from JWT token
+	
 	userID := c.Get("user_id").(int64)
 
-	// Get job ID from path
+	
 	jobID := c.Param("id")
 	if jobID == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Job ID is required"})
 	}
 
-	// Convert job ID to int64
 	id, err := strconv.ParseInt(jobID, 10, 64)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid job ID"})
 	}
 
-	// Get job status
 	job, err := db.GetCollectionJob(id)
 	if err != nil {
 		slog.Error("Failed to get job status", "error", err, "user_id", userID, "job_id", id)
@@ -386,7 +384,7 @@ func GetJobStatus(c echo.Context) error {
 }
 
 func GetUserJobs(c echo.Context) error {
-	// Get user ID from JWT token
+	
 	userID := c.Get("user_id").(int64)
 
 	// Get user's jobs
@@ -400,10 +398,10 @@ func GetUserJobs(c echo.Context) error {
 }
 
 func CompareCollections(c echo.Context) error {
-	// Get user ID from JWT token
+	
 	userID := c.Get("user_id").(int64)
 
-	// Get collection ID from path
+	
 	collectionID := c.Param("id")
 	if collectionID == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Collection ID is required"})
@@ -430,14 +428,14 @@ func maskAPIKey(key string) string {
 	if len(key) < 8 {
 		return "PMAK-XXXXXXXXXXXX"
 	}
-	// Show first 6 and last 4 characters, mask the middle with 8 X's
+
 	prefix := key[:6]
 	suffix := key[len(key)-4:]
 	return prefix + "XXXXXXXXXXXXX" + suffix
 }
 
 func GetAPIKeys(c echo.Context) error {
-	// Get user ID from JWT token
+	
 	userID := c.Get("user_id").(int64)
 
 	// Get API key info
@@ -473,10 +471,10 @@ func GetAPIKeys(c echo.Context) error {
 }
 
 func DeleteAPIKey(c echo.Context) error {
-	// Get user ID from JWT token
+	
 	userID := c.Get("user_id").(int64)
 
-	// Get key ID from path
+	
 	keyID := c.Param("id")
 	if keyID == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Key ID is required"})
@@ -498,7 +496,7 @@ func DeleteAPIKey(c echo.Context) error {
 }
 
 func GetUserCollections(c echo.Context) error {
-	// Get user ID from JWT token
+	
 	userID := c.Get("user_id").(int64)
 
 	// Get collections for the user

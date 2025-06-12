@@ -19,30 +19,25 @@ import (
 )
 
 func main() {
-	// Initialize database
 	if err := db.InitDB(); err != nil {
 		slog.Error("Failed to initialize database", "error", err)
 		os.Exit(1)
 	}
 	defer db.Close()
 
-	// Initialize task queue
 	if err := queue.InitQueue(); err != nil {
 		slog.Error("Failed to initialize task queue", "error", err)
 		os.Exit(1)
 	}
 	defer queue.Close()
 
-	// Initialize security features
 	if err := security.InitSecurity(); err != nil {
 		slog.Error("Failed to initialize security features", "error", err)
 		os.Exit(1)
 	}
 
-	// Create Echo instance
 	e := echo.New()
 
-	// Middleware
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 	e.Use(middleware.Gzip())
@@ -56,7 +51,6 @@ func main() {
 
 	v1 := e.Group("/integrator/api/v1")
 
-	// Setup v1 routes
 	routes.SetupRoutes(v1)
 
 	// Create and start worker
@@ -89,13 +83,12 @@ func main() {
 		}
 	}()
 
-	// Get port from environment variable with default fallback
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
 
-	// Start server
 	if err := e.Start(":" + port); err != nil {
 		slog.Error("Error starting server", "error", err)
 	}
