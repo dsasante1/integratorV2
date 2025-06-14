@@ -28,9 +28,9 @@ type ServiceAccountCredentials struct {
 }
 
 type FirebaseConfig struct {
-	ProjectID    string
-	DatabaseURL  string
-	Credentials  ServiceAccountCredentials
+	ProjectID   string
+	DatabaseURL string
+	Credentials ServiceAccountCredentials
 }
 
 type FirebaseClient struct {
@@ -74,14 +74,12 @@ func NewFirebaseClient(config *FirebaseConfig) (*FirebaseClient, error) {
 	}, nil
 }
 
-
 func validateEnvVariables(envVariables []string) error {
 	if slices.Contains(envVariables, "") {
-			return errors.New("missing required Firebase config environment variables")
-		}
+		return errors.New("missing required Firebase config environment variables")
+	}
 	return nil
 }
-
 
 func LoadFirebaseConfig() (*FirebaseConfig, error) {
 	projectID := os.Getenv("FIREBASE_PROJECT_ID")
@@ -139,8 +137,7 @@ func LoadFirebaseConfig() (*FirebaseConfig, error) {
 }
 
 func InitFireStore() error {
-	slog.Info("Initializing Firebase connection from environment variables")
-	
+
 	firebaseConfig, err := LoadFirebaseConfig()
 	if err != nil {
 		slog.Error("Failed to load Firebase config from environment variables", slog.Any("error", err))

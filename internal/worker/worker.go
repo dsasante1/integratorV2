@@ -3,14 +3,17 @@ package worker
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"os"
 
 	"github.com/hibiken/asynq"
 
 	"integratorV2/internal/db"
+	"integratorV2/internal/notification"
 	"integratorV2/internal/postman"
 	"integratorV2/internal/queue"
+	"strconv"
 )
 
 type Worker struct {
@@ -44,10 +47,9 @@ func NewWorker() *Worker {
 }
 
 func (w *Worker) Start(ctx context.Context) error {
-	// Create a new mux
+
 	mux := asynq.NewServeMux()
 
-	// Register task handlers
 	mux.HandleFunc(queue.QueueCollectionImport, w.handleCollectionImport)
 	mux.HandleFunc(queue.QueueKMSRotation, w.HandleKMSRotation)
 
@@ -77,41 +79,74 @@ func (w *Worker) handleCollectionImport(ctx context.Context, t *asynq.Task) erro
 		return err
 	}
 
-	// Get API key for the user
+	userIDStr := strconv.Itoa(int(payload.UserID))
+
 	apiKey, err := db.GetPostmanAPIKey(payload.UserID)
 	if err != nil {
 		errMsg := "Failed to get API key"
+
+		notification.NotificationServices.SendNotification(ctx, &notification.NotificationRequest{
+			UserID:  userIDStr,
+			Type:    "fail",
+			Title:   "fetch collection snapshot failed",
+			Message: fmt.Sprintf("fetch collection snapshot failed '%s'", payload.Name),
+		})
 		slog.Error(errMsg, "error", err, "user_id", payload.UserID)
 		return err
 	}
 
-	// Get collection from Postman
 	collection, err := postman.GetCollection(apiKey, payload.CollectionID)
 	if err != nil {
 		errMsg := "Failed to fetch collection from Postman"
+
+		notification.NotificationServices.SendNotification(ctx, &notification.NotificationRequest{
+			UserID:  userIDStr,
+			Type:    "fail",
+			Title:   "fetch collection snapshot failed",
+			Message: fmt.Sprintf("fetch collection snapshot failed '%s'", payload.Name),
+		})
 		slog.Error(errMsg, "error", err, "user_id", payload.UserID, "collection_id", payload.CollectionID)
 		return err
 	}
 
-	// Mask sensitive data in the collection
 	maskedCollection, err := postman.MaskCollection(collection)
 	if err != nil {
 		errMsg := "Failed to mask sensitive data in collection"
+
+		notification.NotificationServices.SendNotification(ctx, &notification.NotificationRequest{
+			UserID:  userIDStr,
+			Type:    "fail",
+			Title:   "fetch collection snapshot failed",
+			Message: fmt.Sprintf("fetch collection snaphot data failed '%s'", payload.Name),
+		})
+
 		slog.Error(errMsg, "error", err, "user_id", payload.UserID, "collection_id", payload.CollectionID)
 		return err
 	}
 
-	// Convert collection to JSON for storage
 	content, err := json.Marshal(maskedCollection)
 	if err != nil {
 		errMsg := "Failed to process collection data"
+
+		notification.NotificationServices.SendNotification(ctx, &notification.NotificationRequest{
+			UserID:  userIDStr,
+			Type:    "fail",
+			Title:   "fetch collection snapshot failed",
+			Message: fmt.Sprintf("fetch collection snaphot data failed '%s'", payload.Name),
+		})
 		slog.Error(errMsg, "error", err, "user_id", payload.UserID, "collection_id", payload.CollectionID)
 		return err
 	}
 
-	// Store collection and create snapshot with custom name
 	if err := postman.StoreCollectionSnapshotWithName(payload.CollectionID, payload.Name, content, payload.UserID); err != nil {
 		errMsg := "Failed to store collection"
+
+		notification.NotificationServices.SendNotification(ctx, &notification.NotificationRequest{
+			UserID:  userIDStr,
+			Type:    "fail",
+			Title:   "store collection snapshot failed",
+			Message: fmt.Sprintf("import collection failed '%s'", payload.Name),
+		})
 		slog.Error(errMsg, "error", err, "user_id", payload.UserID, "collection_id", payload.CollectionID)
 		return err
 	}
@@ -119,7 +154,15 @@ func (w *Worker) handleCollectionImport(ctx context.Context, t *asynq.Task) erro
 	slog.Info("Successfully processed collection import",
 		"user_id", payload.UserID,
 		"collection_id", payload.CollectionID,
-		"name", payload.Name)
+		"name", payload.Name,
+	)
+
+	notification.NotificationServices.SendNotification(ctx, &notification.NotificationRequest{
+		UserID:  userIDStr,
+		Type:    "success",
+		Title:   "Collection Import Successful",
+		Message: fmt.Sprintf("Successfully imported collection '%s'", payload.Name),
+	})
 
 	return nil
 }
