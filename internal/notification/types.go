@@ -1,19 +1,19 @@
-package notifications
+package notification
 
 import "time"
 
 type NotificationType string
 
 type Notification struct {
-	ID        string           `json:"id"`
-	UserID    string           `json:"user_id"`
-	Type      NotificationType `json:"type"`
-	Title     string           `json:"title"`
-	Message   string           `json:"message"`
+	ID        string                 `json:"id"`
+	UserID    string                 `json:"user_id"`
+	Type      NotificationType       `json:"type"`
+	Title     string                 `json:"title"`
+	Message   string                 `json:"message"`
 	Data      map[string]interface{} `json:"data,omitempty"`
-	Read      bool             `json:"read"`
-	CreatedAt time.Time        `json:"created_at"`
-	ExpiresAt *time.Time       `json:"expires_at,omitempty"`
+	Read      bool                   `json:"read"`
+	CreatedAt time.Time              `json:"created_at"`
+	ExpiresAt *time.Time             `json:"expires_at,omitempty"`
 }
 
 type NotificationRequest struct {

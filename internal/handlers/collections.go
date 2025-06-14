@@ -98,7 +98,6 @@ func RotateAPIKey(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "New API key is required"})
 	}
 
-	// Rotate API key
 	if err := db.RotateAPIKey(userID, req.NewAPIKey); err != nil {
 		slog.Error("Failed to rotate API key", "error", err, "user_id", userID)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to rotate API key"})
@@ -112,20 +111,17 @@ func GetCollections(c echo.Context) error {
 	
 	userID := c.Get("user_id").(int64)
 
-	// Get API key
 	apiKey, err := db.GetPostmanAPIKey(userID)
 	if err != nil {
 		slog.Warn("No active API key found", "error", err, "user_id", userID)
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "No active API key found. Please store your Postman API key first."})
 	}
 
-	// Update last used timestamp
 	if err := db.UpdateLastUsedAPIKey(userID); err != nil {
 		slog.Error("Failed to update API key usage", "error", err, "user_id", userID)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to update API key usage"})
 	}
 
-	// Get collections from Postman
 	collections, err := postman.GetCollections(apiKey)
 	if err != nil {
 		slog.Error("Failed to fetch collections from Postman", "error", err, "user_id", userID)

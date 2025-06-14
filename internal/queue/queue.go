@@ -39,12 +39,12 @@ func InitQueue() error {
 	client = asynq.NewClient(redisOpt)
 	inspector = asynq.NewInspector(redisOpt)
 
-	// Test connection
+
 	if err := client.Close(); err != nil {
 		return fmt.Errorf("failed to connect to Redis: %v", err)
 	}
 
-	// Recreate client after test
+
 	client = asynq.NewClient(redisOpt)
 
 	slog.Info("Successfully initialized task queue")

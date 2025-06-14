@@ -4,6 +4,7 @@ import (
 	"context"
 	"integratorV2/internal/config"
 	"integratorV2/internal/db"
+	"integratorV2/internal/notification"
 	"integratorV2/internal/queue"
 	"integratorV2/internal/routes"
 	"integratorV2/internal/security"
@@ -38,12 +39,15 @@ func main() {
 		os.Exit(1)
 	}
 
-
 	if err := config.InitFireStore(); err != nil {
-        slog.Error("Failed to initialize Firebase:", slog.Any("err", err))
-    }
-    defer config.CloseFirebaseConnection()
+		slog.Error("Failed to initialize Firebase:", slog.Any("err", err))
+	}
+	defer config.CloseFirebaseConnection()
 
+	if err := notification.InitNotificationService(); err != nil {
+
+		slog.Error("Failed to initialize notification:", slog.Any("err", err))
+	}
 	e := echo.New()
 
 	e.Use(middleware.Logger())
@@ -90,7 +94,6 @@ func main() {
 			slog.Error("Error shutting down server", "error", err)
 		}
 	}()
-
 
 	port := os.Getenv("PORT")
 	if port == "" {

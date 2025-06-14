@@ -1,4 +1,4 @@
-package notifications
+package notification
 
 import (
 	"context"
@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"log/slog"
 	"time"
-	
+
 	"cloud.google.com/go/firestore"
 	"github.com/google/uuid"
 	"google.golang.org/api/iterator"
-	
+
 	"integratorV2/internal/config"
 )
 
@@ -18,7 +18,7 @@ type NotificationService struct {
 	db *firestore.Client
 }
 
-var GlobalNotificationService *NotificationService
+var NotificationServices *NotificationService
 
 func NewNotificationService(firestoreDB *firestore.Client) *NotificationService {
 	return &NotificationService{
@@ -30,18 +30,18 @@ func InitNotificationService() error {
 	if config.FirebaseConnection == nil || config.FirebaseConnection.Firestore == nil {
 		return errors.New("firebase connection not initialized. Call config.InitFireStore() first")
 	}
-	
-	GlobalNotificationService = NewNotificationService(config.FirebaseConnection.Firestore)
+
+	NotificationServices = NewNotificationService(config.FirebaseConnection.Firestore)
 	slog.Info("Notification service initialized successfully")
 	return nil
 }
 
 func GetNotificationService() *NotificationService {
-	if GlobalNotificationService == nil {
+	if NotificationServices == nil {
 		slog.Error("Notification service not initialized. Call InitNotificationService() first.")
 		return nil
 	}
-	return GlobalNotificationService
+	return NotificationServices
 }
 
 func (s *NotificationService) SendNotification(ctx context.Context, req *NotificationRequest) (*Notification, error) {
@@ -76,7 +76,7 @@ func (s *NotificationService) SendNotification(ctx context.Context, req *Notific
 
 func (s *NotificationService) GetNotifications(ctx context.Context, filter *NotificationFilter) ([]*Notification, error) {
 	query := s.db.Collection("notifications").Where("user_id", "==", filter.UserID).OrderBy("created_at", firestore.Desc)
-	
+
 	if filter.Limit > 0 {
 		query = query.Limit(filter.Limit)
 	}
@@ -102,7 +102,7 @@ func (s *NotificationService) GetNotifications(ctx context.Context, filter *Noti
 		if filter.Type != "" && notification.Type != filter.Type {
 			continue
 		}
-		
+
 		if filter.Read != nil && notification.Read != *filter.Read {
 			continue
 		}
@@ -138,7 +138,7 @@ func (s *NotificationService) MarkAllAsRead(ctx context.Context, userID string) 
 
 	bulkWriter := s.db.BulkWriter(ctx)
 	defer bulkWriter.End()
-	
+
 	for {
 		doc, err := iter.Next()
 		if err == iterator.Done {
@@ -202,7 +202,7 @@ func (s *NotificationService) GetNotificationStats(ctx context.Context, userID s
 		if notification.ExpiresAt != nil && time.Now().After(*notification.ExpiresAt) {
 			continue
 		}
-		
+
 		stats.Total++
 		if !notification.Read {
 			stats.Unread++
@@ -215,7 +215,7 @@ func (s *NotificationService) GetNotificationStats(ctx context.Context, userID s
 func (s *NotificationService) CleanupExpiredNotifications(ctx context.Context, userID string) error {
 	now := time.Now()
 	query := s.db.Collection("notifications").Where("user_id", "==", userID).Where("expires_at", "<=", now)
-	
+
 	iter := query.Documents(ctx)
 	defer iter.Stop()
 
@@ -228,7 +228,7 @@ func (s *NotificationService) CleanupExpiredNotifications(ctx context.Context, u
 		if err == iterator.Done {
 			break
 		}
-		if err != nil { 
+		if err != nil {
 			return fmt.Errorf("failed to get expired notifications: %w", err)
 		}
 
@@ -255,6 +255,6 @@ func (s *NotificationService) updateNotificationCount(ctx context.Context, userI
 	if err != nil {
 		return fmt.Errorf("failed to update user stats: %w", err)
 	}
-	
+
 	return nil
 }
