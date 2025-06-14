@@ -51,18 +51,16 @@ func InitQueue() error {
 	return nil
 }
 
-// EnqueueCollectionImport creates a new task to import a collection
+
 func EnqueueCollectionImport(payload CollectionImportPayload) (string, error) {
-	// Marshal payload
+
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal payload: %v", err)
 	}
 
-	// Create task
 	task := asynq.NewTask(QueueCollectionImport, payloadBytes)
 
-	// Enqueue task with retry options
 	info, err := client.Enqueue(task,
 		asynq.Queue(QueueCollectionImport),
 		asynq.MaxRetry(3),
@@ -76,7 +74,6 @@ func EnqueueCollectionImport(payload CollectionImportPayload) (string, error) {
 	return info.ID, nil
 }
 
-// GetTaskStatus returns the current status of a task
 func GetTaskStatus(taskID string) (*asynq.TaskInfo, error) {
 	info, err := inspector.GetTaskInfo(QueueCollectionImport, taskID)
 	if err != nil {
@@ -85,7 +82,6 @@ func GetTaskStatus(taskID string) (*asynq.TaskInfo, error) {
 	return info, nil
 }
 
-// Close closes the Redis connection
 func Close() error {
 	if client != nil {
 		return client.Close()

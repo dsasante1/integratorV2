@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"integratorV2/internal/config"
 	"integratorV2/internal/db"
 	"integratorV2/internal/queue"
 	"integratorV2/internal/routes"
@@ -19,6 +20,7 @@ import (
 )
 
 func main() {
+
 	if err := db.InitDB(); err != nil {
 		slog.Error("Failed to initialize database", "error", err)
 		os.Exit(1)
@@ -35,6 +37,12 @@ func main() {
 		slog.Error("Failed to initialize security features", "error", err)
 		os.Exit(1)
 	}
+
+
+	if err := config.InitFireStore(); err != nil {
+        slog.Error("Failed to initialize Firebase:", slog.Any("err", err))
+    }
+    defer config.CloseFirebaseConnection()
 
 	e := echo.New()
 

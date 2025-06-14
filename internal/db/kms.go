@@ -5,9 +5,9 @@ import (
 	"time"
 )
 
-// InitKMSRotation initializes the KMS key rotation task
+
 func InitKMSRotation(keyID string) error {
-	// Check if rotation task already exists
+
 	var exists bool
 	err := DB.Get(&exists, `
 		SELECT EXISTS (
