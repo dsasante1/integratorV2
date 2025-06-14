@@ -126,16 +126,13 @@ func GenerateToken(user *User) (string, error) {
 		"exp":     time.Now().Add(time.Hour * 24).Unix(),
 	}
 
-	// Create token
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
-	// Get secret from environment variable, fallback to default for development
 	secret := os.Getenv("JWT_SECRET")
 	if secret == "" {
 		secret = "your-secret-key" // Use this only for development
 	}
 
-	// Generate encoded token
 	return token.SignedString([]byte(secret))
 }
 
@@ -143,26 +140,22 @@ func VerifyPassword(hashedPassword, password string) error {
 	return bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password))
 }
 
-// JWTMiddleware middleware for JWT authentication
 func JWTMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		// Get token from Authorization header
 		authHeader := c.Request().Header.Get("Authorization")
 		if authHeader == "" {
 			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Authorization header is required"})
 		}
 
-		// Extract token from "Bearer <token>"
 		if len(authHeader) < 7 || authHeader[:7] != "Bearer " {
 			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid token format"})
 		}
 		
-		tokenString := authHeader[7:] // Remove "Bearer " prefix
+		tokenString := authHeader[7:]
 		if tokenString == "" {
 			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid token format"})
 		}
 
-		// Parse and validate token
 		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, errors.New("unexpected signing method")
@@ -170,7 +163,7 @@ func JWTMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 			
 			secret := os.Getenv("JWT_SECRET")
 			if secret == "" {
-				secret = "your-secret-key" // Use this only for development
+				secret = "your-secret-key" 
 			}
 			
 			return []byte(secret), nil
@@ -181,7 +174,7 @@ func JWTMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 		}
 
 		if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
-			// Set user ID in context
+
 			userID := int64(claims["user_id"].(float64))
 			c.Set("user_id", userID)
 			return next(c)
