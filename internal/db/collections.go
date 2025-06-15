@@ -59,6 +59,12 @@ type APIKeyInfo struct {
 	EncryptedKey  string    `db:"encrypted_key" json:"-"`
 }
 
+type ChangesResponse struct {
+	Data       []Change               `json:"data"`
+	Pagination map[string]interface{} `json:"pagination"`
+}
+
+
 func StoreCollection(id, name string, user_id int64) error {
 	_, err := DB.Exec(`
 		INSERT INTO collections (id, name, user_id)

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"log/slog"
 )
 
 // CompareResult represents the differences between two collections
@@ -17,8 +18,8 @@ type CompareResult struct {
 	} `json:"modified"`
 }
 
-// CompareCollections compares two collection snapshots and returns their differences
-func CompareCollections(oldSnapshot, newSnapshot *Snapshot) (*CompareResult, error) {
+// CompareSnapShots compares two collection snapshots and returns their differences
+func CompareSnapShots(oldSnapshot, newSnapshot *Snapshot) (*CompareResult, error) {
 	if oldSnapshot == nil || newSnapshot == nil {
 		return nil, fmt.Errorf("both snapshots must be provided")
 	}
@@ -116,4 +117,43 @@ func GetLatestSnapshots(collectionID string) (*Snapshot, *Snapshot, error) {
 	}
 
 	return &snapshots[0], &snapshots[1], nil
+}
+
+
+
+func GetCollectionChanges(collectionID string, page int, pageSize int) (ChangesResponse, error) {
+	offset := (page - 1) * pageSize
+
+	var totalChanges int
+	err := DB.Get(&totalChanges, `
+		SELECT COUNT(*) FROM changes
+		WHERE collection_id = $1
+	`, collectionID)
+	if err != nil {
+		slog.Error("an error occurred fetching collection changes", "error", err)
+		return ChangesResponse{}, fmt.Errorf("get total changes failed")
+	}
+
+
+	var changes []Change
+	err = DB.Select(&changes, `
+		SELECT * FROM changes
+		WHERE collection_id = $1
+		ORDER BY change_time DESC
+		LIMIT $2 OFFSET $3
+	`, collectionID, pageSize, offset)
+	if err != nil {
+		slog.Error("an error occurred fetching collection changes", "error", err)
+		return ChangesResponse{}, fmt.Errorf("get paginated changes failed")
+	}
+
+	return ChangesResponse{
+		Data: changes,
+		Pagination: map[string]interface{}{
+			"page":        page,
+			"page_size":   pageSize,
+			"total":       totalChanges,
+			"total_pages": (totalChanges + pageSize - 1) / pageSize,
+		},
+	}, nil
 }

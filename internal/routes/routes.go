@@ -42,7 +42,7 @@ func SetupRoutes(api *echo.Group) {
 	collections.DELETE("snapshot/changes/:id", handlers.DeleteSnapshotChanges)
 
 	collections.GET("/:id/changes", handlers.GetCollectionChanges)
-	collections.GET("/compare/:id", handlers.CompareCollections)
+	collections.GET("/snapshot/compare/:id", handlers.CompareSnapShots)
 
 	jobs := api.Group("/jobs")
 	jobs.GET("", handlers.GetUserJobs)

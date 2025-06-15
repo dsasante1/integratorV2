@@ -315,39 +315,12 @@ func GetCollectionChanges(c echo.Context) error {
 		}
 	}
 
-	offset := (page - 1) * pageSize
-
-	// Get total count of changes
-	var totalChanges int
-	err := db.DB.Get(&totalChanges, `
-		SELECT COUNT(*) FROM changes
-		WHERE collection_id = $1
-	`, collectionID)
+	change, err := db.GetCollectionChanges(collectionID, page, pageSize)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch collection changes"})
 	}
 
-	// Get paginated changes
-	var changes []db.Change
-	err = db.DB.Select(&changes, `
-		SELECT * FROM changes
-		WHERE collection_id = $1
-		ORDER BY change_time DESC
-		LIMIT $2 OFFSET $3
-	`, collectionID, pageSize, offset)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch collection changes"})
-	}
-
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"data": changes,
-		"pagination": map[string]interface{}{
-			"page":        page,
-			"page_size":   pageSize,
-			"total":       totalChanges,
-			"total_pages": (totalChanges + pageSize - 1) / pageSize,
-		},
-	})
+	return c.JSON(http.StatusOK, change)
 }
 
 func GetJobStatus(c echo.Context) error {
@@ -393,7 +366,7 @@ func GetUserJobs(c echo.Context) error {
 	return c.JSON(http.StatusOK, jobs)
 }
 
-func CompareCollections(c echo.Context) error {
+func CompareSnapShots(c echo.Context) error {
 	
 	userID := c.Get("user_id").(int64)
 
@@ -411,7 +384,7 @@ func CompareCollections(c echo.Context) error {
 	}
 
 	// Compare snapshots
-	result, err := db.CompareCollections(previousSnapshot, latestSnapshot)
+	result, err := db.CompareSnapShots(previousSnapshot, latestSnapshot)
 	if err != nil {
 		slog.Error("Failed to compare collections", "error", err, "user_id", userID, "collection_id", collectionID)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to compare collections"})
@@ -420,6 +393,7 @@ func CompareCollections(c echo.Context) error {
 	return c.JSON(http.StatusOK, result)
 }
 
+//TODO move to utilities
 func maskAPIKey(key string) string {
 	if len(key) < 8 {
 		return "PMAK-XXXXXXXXXXXX"
