@@ -476,13 +476,11 @@ func DeleteAPIKey(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Key ID is required"})
 	}
 
-	// Convert key ID to int64
 	id, err := strconv.ParseInt(keyID, 10, 64)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid key ID"})
 	}
 
-	// Delete API key
 	if err := db.DeleteAPIKey(id, userID); err != nil {
 		slog.Error("Failed to delete API key", "error", err, "user_id", userID, "key_id", id)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to delete API key"})
@@ -495,7 +493,6 @@ func GetUserCollections(c echo.Context) error {
 	
 	userID := c.Get("user_id").(int64)
 
-	// Get collections for the user
 	collections, err := db.GetUserCollections(userID)
 	if err != nil {
 		slog.Error("Failed to get user collections", "error", err, "user_id", userID)

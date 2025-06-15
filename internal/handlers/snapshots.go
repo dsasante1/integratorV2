@@ -3,7 +3,9 @@ package handlers
 import (
 	"github.com/labstack/echo/v4"
 	"integratorV2/internal/db"
+	"log/slog"
 	"net/http"
+		"strconv"
 )
 
 // GetSnapshotDetail retrieves a specific snapshot with optional field filtering
@@ -63,4 +65,22 @@ func GetSnapshotItemTree(c echo.Context) error {
 		"items":         items,
 		"total":         len(items),
 	})
+}
+
+func DeleteSnapshot(c echo.Context) error {
+	snapshotID := c.Param("id")
+		id, err := strconv.ParseInt(snapshotID, 10, 64)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid snapshotID"})
+	}
+	if err := db.DeleteSnapshot(id); err != nil {
+		slog.Error("Failed to delete snapshot", "error", err)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to delete snapshot"})
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{"message": "snapshot deleted successfully"})
+	
+
+	
+
 }

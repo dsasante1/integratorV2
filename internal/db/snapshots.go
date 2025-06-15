@@ -337,3 +337,27 @@ func GetSnapshotItemsFlattened(snapshotID string, collectionID string) ([]map[st
 	return items, nil
 }
 
+func DeleteSnapshot(snapshotID int64)error {
+
+	result, err := DB.Exec(
+		`
+		DELETE FROM snapshots
+		WHERE id = $1
+	`,
+		snapshotID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to delete snapshot: %v", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %v", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("no data found for snapshot id: %d", snapshotID)
+	}
+
+	return nil
+}
