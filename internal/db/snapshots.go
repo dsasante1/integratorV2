@@ -361,3 +361,52 @@ func DeleteSnapshot(snapshotID int64)error {
 
 	return nil
 }
+
+func DeleteSnapshotChanges(snapshotID int64) error {
+	tx, err := DB.Beginx()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %v", err)
+	}
+	defer tx.Rollback()
+
+	changesResult, err := tx.Exec(
+		`DELETE FROM changes WHERE old_snapshot_id = $1`,
+		snapshotID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to delete related changes: %v", err)
+	}
+
+	_, err = changesResult.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get changes rows affected: %v", err)
+	}
+
+	
+	snapshotResult, err := tx.Exec(
+		`DELETE FROM snapshots WHERE id = $1`,
+		snapshotID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to delete snapshot: %v", err)
+	}
+
+	snapshotRowsAffected, err := snapshotResult.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get snapshot rows affected: %v", err)
+	}
+
+	if snapshotRowsAffected == 0 {
+		return fmt.Errorf("no snapshot found with id: %d", snapshotID)
+	}
+
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %v", err)
+	}
+
+	
+	slog.Info("Successfully deleted snapshot and related changes\n", "snapshotID", "snapshotID")
+
+	return nil
+}

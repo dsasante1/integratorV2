@@ -105,3 +105,16 @@ func DeleteSnapshot(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, map[string]string{"message": "snapshot deleted successfully"})
 }
+
+func DeleteSnapshotChanges(c echo.Context) error {
+		snapshotID := c.Param("id")
+	id, err := strconv.ParseInt(snapshotID, 10, 64)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid snapshotID"})
+	}
+
+	if err := db.DeleteSnapshotChanges(id); err != nil {
+		slog.Error("Failed to delete snapshot", "error", err)
+	}
+return c.JSON(http.StatusOK, map[string]string{"message": "snapshot deleted successfully"})
+}
