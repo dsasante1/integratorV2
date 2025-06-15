@@ -1,11 +1,14 @@
 package handlers
 
 import (
-	"github.com/labstack/echo/v4"
 	"integratorV2/internal/db"
 	"log/slog"
 	"net/http"
-		"strconv"
+	"strconv"
+	"strings"
+
+	"github.com/labstack/echo/v4"
+	"github.com/lib/pq"
 )
 
 // GetSnapshotDetail retrieves a specific snapshot with optional field filtering
@@ -69,18 +72,36 @@ func GetSnapshotItemTree(c echo.Context) error {
 
 func DeleteSnapshot(c echo.Context) error {
 	snapshotID := c.Param("id")
-		id, err := strconv.ParseInt(snapshotID, 10, 64)
+	id, err := strconv.ParseInt(snapshotID, 10, 64)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid snapshotID"})
 	}
+
 	if err := db.DeleteSnapshot(id); err != nil {
 		slog.Error("Failed to delete snapshot", "error", err)
+		
+		// Check if it's a foreign key constraint error
+		if pqErr, ok := err.(*pq.Error); ok {
+			if pqErr.Code == "23503" { 
+				if strings.Contains(pqErr.Message, "changes_old_snapshot_id_fkey") {
+					return c.JSON(http.StatusConflict, map[string]string{
+						"error": "This snapshot can’t be deleted because it’s linked to existing changes. Please update or remove those related changes before trying again.",
+					})
+				}
+				return c.JSON(http.StatusConflict, map[string]string{
+					"error": "Cannot delete snapshot as it is referenced by other records.",
+				})
+			}
+		}
+		
+		if strings.Contains(err.Error(), "changes_old_snapshot_id_fkey") {
+			return c.JSON(http.StatusConflict, map[string]string{
+				"error": "Cannot delete snapshot as it is referenced in the changes table. Please remove or update the related changes first.",
+			})
+		}
+		
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to delete snapshot"})
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{"message": "snapshot deleted successfully"})
-	
-
-	
-
 }

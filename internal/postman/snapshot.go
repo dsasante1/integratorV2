@@ -9,8 +9,6 @@ import (
 	"integratorV2/internal/db"
 )
 
-// StoreCollectionSnapshot orchestrates the process of storing a collection snapshot
-// and tracking any changes from the previous snapshot
 func StoreCollectionSnapshot(collectionID string, content json.RawMessage, userID int64,) error {
 	slog.Info("Starting collection snapshot process", "collection_id", collectionID)
 
@@ -21,20 +19,18 @@ func StoreCollectionSnapshot(collectionID string, content json.RawMessage, userI
 		return fmt.Errorf("error parsing collection metadata: %v", err)
 	}
 
-	// Store collection metadata
 	if err := storeCollectionMetadata(collectionID, collection.Collection.Name, userID); err != nil {
 		slog.Error("Failed to store collection metadata", "error", err, "collection_id", collectionID)
 		return err
 	}
 
-	// Create new snapshot
 	snapshotID, err := createSnapshot(collectionID, content)
 	if err != nil {
 		slog.Error("Failed to create snapshot", "error", err, "collection_id", collectionID)
 		return err
 	}
 
-	// Process changes if there's a previous snapshot
+
 	if err := processSnapshotChanges(collectionID, snapshotID); err != nil {
 		slog.Error("Failed to process snapshot changes", "error", err, "collection_id", collectionID)
 		return err
@@ -44,25 +40,20 @@ func StoreCollectionSnapshot(collectionID string, content json.RawMessage, userI
 	return nil
 }
 
-// StoreCollectionSnapshotWithName orchestrates the process of storing a collection snapshot
-// with a custom name and tracking any changes from the previous snapshot
 func StoreCollectionSnapshotWithName(collectionID, name string, content json.RawMessage, userID int64) error {
 	slog.Info("Starting collection snapshot process", "collection_id", collectionID, "name", name)
 
-	// Store collection metadata with provided name
 	if err := storeCollectionMetadata(collectionID, name, userID); err != nil {
 		slog.Error("Failed to store collection metadata", "error", err, "collection_id", collectionID)
 		return err
 	}
 
-	// Create new snapshot
 	snapshotID, err := createSnapshot(collectionID, content)
 	if err != nil {
 		slog.Error("Failed to create snapshot", "error", err, "collection_id", collectionID)
 		return err
 	}
 
-	// Process changes if there's a previous snapshot
 	if err := processSnapshotChanges(collectionID, snapshotID); err != nil {
 		slog.Error("Failed to process snapshot changes", "error", err, "collection_id", collectionID)
 		return err
@@ -72,7 +63,7 @@ func StoreCollectionSnapshotWithName(collectionID, name string, content json.Raw
 	return nil
 }
 
-// parseCollectionMetadata extracts the collection metadata from the raw content
+
 func parseCollectionMetadata(content json.RawMessage) (*PostmanCollectionResponse, error) {
 	var collection PostmanCollectionResponse
 	if err := json.Unmarshal(content, &collection); err != nil {
@@ -81,7 +72,7 @@ func parseCollectionMetadata(content json.RawMessage) (*PostmanCollectionRespons
 	return &collection, nil
 }
 
-// storeCollectionMetadata stores the basic collection information
+
 func storeCollectionMetadata(collectionID, name string, userID int64) error {
 	if err := db.StoreCollection(collectionID, name, userID); err != nil {
 		return fmt.Errorf("error storing collection metadata: %v", err)
@@ -90,7 +81,7 @@ func storeCollectionMetadata(collectionID, name string, userID int64) error {
 	return nil
 }
 
-// createSnapshot creates a new snapshot record with the collection content
+
 func createSnapshot(collectionID string, content json.RawMessage) (int64, error) {
 	hash := fmt.Sprintf("%x", content)
 
@@ -108,21 +99,19 @@ func createSnapshot(collectionID string, content json.RawMessage) (int64, error)
 	return snapshotID, nil
 }
 
-// processSnapshotChanges handles the comparison and storage of changes between snapshots
+
 func processSnapshotChanges(collectionID string, newSnapshotID int64) error {
-	// Get previous snapshot
+
 	oldSnapshotID, oldContent, err := getPreviousSnapshot(collectionID, newSnapshotID)
 	if err != nil {
 		return err
 	}
 
-	// If no previous snapshot, we're done
 	if oldSnapshotID == nil {
 		slog.Info("No previous snapshot found, skipping change detection", "collection_id", collectionID)
 		return nil
 	}
 
-	// Get new snapshot content
 	var newContent json.RawMessage
 	err = db.DB.QueryRow(`
 		SELECT content FROM snapshots WHERE id = $1
@@ -131,7 +120,6 @@ func processSnapshotChanges(collectionID string, newSnapshotID int64) error {
 		return fmt.Errorf("error getting new snapshot content: %v", err)
 	}
 
-	// Compare and store changes
 	changes := compareSnapshots(oldContent, newContent)
 	if err := storeChanges(collectionID, oldSnapshotID, newSnapshotID, changes); err != nil {
 		return err
@@ -163,7 +151,7 @@ func getPreviousSnapshot(collectionID string, currentSnapshotID int64) (*int64, 
 	return oldSnapshotID, oldContent, nil
 }
 
-// storeChanges persists the detected changes to the database
+
 func storeChanges(collectionID string, oldSnapshotID *int64, newSnapshotID int64, changes []Change) error {
 	for _, change := range changes {
 		_, err := db.DB.Exec(`
