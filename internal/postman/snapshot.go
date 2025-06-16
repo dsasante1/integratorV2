@@ -10,8 +10,10 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"errors"
 )
 
+var ErrIdenticalSnapshotFound = errors.New("snapshot with identical content already exists")
 
 type NormalizedSnapshot struct {
 	Collection json.RawMessage `json:"collection"`
@@ -20,7 +22,7 @@ type NormalizedSnapshot struct {
 
 type SnapshotInfo struct {
 	ID          int64     `json:"id"`
-	ContentHash string    `json:"content_hash"`
+	ContentHash string    `json:"hash"`
 	CreatedAt   time.Time `json:"created_at"`
 }
 
@@ -65,6 +67,9 @@ func StoreCollectionSnapshotWithName(collectionID, name string, content json.Raw
 
 	snapshotID, err := createSnapshot(collectionID, content)
 	if err != nil {
+		if errors.Is(err, ErrIdenticalSnapshotFound) {
+			return nil
+		}
 		slog.Error("Failed to create snapshot", "error", err, "collection_id", collectionID)
 		return err
 	}
@@ -260,7 +265,7 @@ func createSnapshot(collectionID string, content json.RawMessage) (int64, error)
 			"collection_id", collectionID, 
 			"existing_snapshot_id", existingID,
 			"hash", contentHash)
-		return existingID, nil
+		return 0, ErrIdenticalSnapshotFound
 	}
 
 	
@@ -304,93 +309,200 @@ func hasContentChanged(collectionID string, newContent json.RawMessage) (bool, e
 }
 
 
-func processSnapshotChanges(collectionID string, newSnapshotID int64) error {
 
-	oldSnapshotID, oldContent, err := getPreviousSnapshot(collectionID, newSnapshotID)
-	slog.Info("alright we dey here ---->>>>", "old snapshot", oldSnapshotID)
-	slog.Info("ok here is the old content ---->>", "old contents", oldContent)
+func processSnapshotChanges(collectionID string, newSnapshotID int64) error {
+	
+	hasChanges, err := quickChangeCheck(collectionID, newSnapshotID)
 	if err != nil {
-		return err
+		return fmt.Errorf("quick change check failed: %w", err)
 	}
 
-	if oldSnapshotID == nil {
-		slog.Info("No previous snapshot found, skipping change detection", "collection_id", collectionID)
+	if !hasChanges {
+		slog.Info("No content changes detected via hash comparison, skipping detailed analysis",
+			"collection_id", collectionID,
+			"snapshot_id", newSnapshotID)
 		return nil
 	}
 
-	var newContent json.RawMessage
-	err = db.DB.QueryRow(`
-		SELECT content FROM snapshots WHERE id = $1
-	`, newSnapshotID).Scan(&newContent)
+	
+	oldSnapshot, err := getPreviousSnapshot(collectionID, newSnapshotID)
 	if err != nil {
-		return fmt.Errorf("error getting new snapshot content: %v", err)
+		return fmt.Errorf("failed to get previous snapshot: %w", err)
 	}
 
-	slog.Info("ok here is the new content ---->>", "new contents", newContent)
-
-	changes := compareSnapshots(oldContent, newContent)
-	if err := storeChanges(collectionID, oldSnapshotID, newSnapshotID, changes); err != nil {
-		return err
+	if oldSnapshot == nil {
+		slog.Info("No previous snapshot found, this is the first snapshot",
+			"collection_id", collectionID,
+			"snapshot_id", newSnapshotID)
+		return nil
 	}
 
-	slog.Info("Processed snapshot changes",
+	
+	newContent, err := getSnapshotContent(newSnapshotID)
+	if err != nil {
+		return fmt.Errorf("failed to get new snapshot content: %w", err)
+	}
+
+	
+	oldContent, err := getSnapshotContent(oldSnapshot.ID)
+	if err != nil {
+		return fmt.Errorf("failed to get old snapshot content: %w", err)
+	}
+
+	slog.Info("Starting detailed change analysis",
 		"collection_id", collectionID,
-		"old_snapshot_id", *oldSnapshotID,
+		"old_snapshot_id", oldSnapshot.ID,
+		"new_snapshot_id", newSnapshotID,
+		"old_hash", oldSnapshot.ContentHash)
+
+	
+	changes := compareSnapshots(oldContent, newContent)
+	
+	if len(changes) == 0 {
+		slog.Warn("Hash indicated changes but detailed comparison found none - possible hash collision",
+			"collection_id", collectionID,
+			"old_snapshot_id", oldSnapshot.ID,
+			"new_snapshot_id", newSnapshotID)
+		return nil
+	}
+
+	
+	if err := storeChanges(collectionID, &oldSnapshot.ID, newSnapshotID, changes); err != nil {
+		return fmt.Errorf("failed to store changes: %w", err)
+	}
+
+	slog.Info("Successfully processed snapshot changes",
+		"collection_id", collectionID,
+		"old_snapshot_id", oldSnapshot.ID,
 		"new_snapshot_id", newSnapshotID,
 		"change_count", len(changes))
+
 	return nil
 }
 
 
-func getPreviousSnapshot(collectionID string, currentSnapshotID int64) (*int64, json.RawMessage, error) {
-	var oldSnapshotID *int64
-	var oldContent json.RawMessage
+func quickChangeCheck(collectionID string, currentSnapshotID int64) (bool, error) {
+	var currentHash, previousHash string
 
+	
 	err := db.DB.QueryRow(`
-		SELECT id, content FROM snapshots
-		WHERE collection_id = $1 AND id != $2
-		ORDER BY snapshot_time DESC
-		LIMIT 1
-	`, collectionID, currentSnapshotID).Scan(&oldSnapshotID, &oldContent)
-	if err != nil && err != sql.ErrNoRows {
-		return nil, nil, fmt.Errorf("error getting previous snapshot: %v", err)
+		SELECT hash FROM snapshots WHERE id = $1
+	`, currentSnapshotID).Scan(&currentHash)
+	if err != nil {
+		return true, fmt.Errorf("failed to get current snapshot hash: %w", err)
 	}
 
-	return oldSnapshotID, oldContent, nil
+	
+	err = db.DB.QueryRow(`
+		SELECT hash FROM snapshots
+		WHERE collection_id = $1 AND id != $2
+		ORDER BY created_at DESC
+		LIMIT 1
+	`, collectionID, currentSnapshotID).Scan(&previousHash)
+	if err == sql.ErrNoRows {
+		
+		return false, nil
+	}
+	if err != nil {
+		return true, fmt.Errorf("failed to get previous snapshot hash: %w", err)
+	}
+
+	hasChanges := currentHash != previousHash
+	
+	slog.Debug("Hash comparison result",
+		"collection_id", collectionID,
+		"current_hash", currentHash,
+		"previous_hash", previousHash,
+		"has_changes", hasChanges)
+
+	return hasChanges, nil
+}
+
+
+func getPreviousSnapshot(collectionID string, currentSnapshotID int64) (*SnapshotInfo, error) {
+	var snapshot SnapshotInfo
+
+	err := db.DB.QueryRow(`
+		SELECT id, hash, created_at 
+		FROM snapshots
+		WHERE collection_id = $1 AND id != $2
+		ORDER BY created_at DESC
+		LIMIT 1
+	`, collectionID, currentSnapshotID).Scan(&snapshot.ID, &snapshot.ContentHash, &snapshot.CreatedAt)
+	
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("error querying previous snapshot: %w", err)
+	}
+
+	return &snapshot, nil
+}
+
+
+func getSnapshotContent(snapshotID int64) (json.RawMessage, error) {
+	var content json.RawMessage
+	err := db.DB.QueryRow(`
+		SELECT content FROM snapshots WHERE id = $1
+	`, snapshotID).Scan(&content)
+	if err != nil {
+		return nil, fmt.Errorf("error getting snapshot content for ID %d: %w", snapshotID, err)
+	}
+	return content, nil
 }
 
 
 func storeChanges(collectionID string, oldSnapshotID *int64, newSnapshotID int64, changes []Change) error {
-    if len(changes) == 0 {
-        return nil
-    }
+	if len(changes) == 0 {
+		slog.Debug("No changes to store", "collection_id", collectionID)
+		return nil
+	}
 
-    tx, err := db.DB.Begin()
-    if err != nil {
-        return fmt.Errorf("begin transaction: %w", err)
-    }
-    defer tx.Rollback()
+	
+	tx, err := db.DB.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
 
-    stmt, err := tx.Prepare(`
-        INSERT INTO changes (
-            collection_id, old_snapshot_id, new_snapshot_id,
-            change_type, path, modification
-        ) VALUES ($1, $2, $3, $4, $5, $6)
-    `)
-    if err != nil {
-        return fmt.Errorf("prepare statement: %w", err)
-    }
-    defer stmt.Close()
+	
+	stmt, err := tx.Prepare(`
+		INSERT INTO changes (
+			collection_id, old_snapshot_id, new_snapshot_id,
+			change_type, path, modification, created_at
+		) VALUES ($1, $2, $3, $4, $5, $6, NOW())
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to prepare insert statement: %w", err)
+	}
+	defer stmt.Close()
 
-    for _, change := range changes {
-        _, err := stmt.Exec(
-            collectionID, oldSnapshotID, newSnapshotID,
-            change.Type, change.Path, change.Modification,
-        )
-        if err != nil {
-            return fmt.Errorf("insert change: %w", err)
-        }
-    }
+	
+	for i, change := range changes {
+		_, err := stmt.Exec(
+			collectionID, oldSnapshotID, newSnapshotID,
+			change.Type, change.Path, change.Modification,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to insert change %d: %w", i, err)
+		}
+	}
 
-    return tx.Commit()
+	
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit changes transaction: %w", err)
+	}
+
+	slog.Info("Successfully stored changes",
+		"collection_id", collectionID,
+		"old_snapshot_id", oldSnapshotID,
+		"new_snapshot_id", newSnapshotID,
+		"change_count", len(changes))
+
+	return nil
 }

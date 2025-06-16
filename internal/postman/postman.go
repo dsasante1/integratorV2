@@ -7,6 +7,7 @@ import (
 	"crypto/md5"
 	"log/slog"
 	"strings"
+	"regexp"
 )
 
 const (
@@ -35,6 +36,22 @@ type Change struct {
 	Type     string
 	Path     string
 	Modification *string
+}
+
+type CompareOptions struct {
+	MaxDepth        int      // Maximum depth to traverse (0 = unlimited)
+	MaxChanges      int      // Maximum number of changes to record (0 = unlimited)
+	IgnorePaths     []string // Paths to ignore (e.g., ["info.version", "info._postman_id"])
+	CompactChanges  bool     // If true, store minimal change info
+	HashThreshold   int      // Size threshold for hashing large values (default 1000)
+}
+
+
+type compareContext struct {
+	changes     []Change
+	opts        *CompareOptions
+	pathIndex   map[string]bool
+	changeCount int
 }
 
 func GetCollections(apiKey string) ([]PostmanCollection, error) {
@@ -96,13 +113,6 @@ func GetCollection(apiKey, collectionID string) (*PostmanCollectionStructure, er
 	return &wrapper.Collection, nil
 }
 
-type CompareOptions struct {
-	MaxDepth        int      // Maximum depth to traverse (0 = unlimited)
-	MaxChanges      int      // Maximum number of changes to record (0 = unlimited)
-	IgnorePaths     []string // Paths to ignore (e.g., ["info.version", "info._postman_id"])
-	CompactChanges  bool     // If true, store minimal change info
-	HashThreshold   int      // Size threshold for hashing large values (default 1000)
-}
 
 
 func DefaultPostmanOptions() *CompareOptions {
@@ -111,11 +121,11 @@ func DefaultPostmanOptions() *CompareOptions {
 		MaxChanges:    1000, // Limit changes to prevent memory issues
 		HashThreshold: 1000, // Hash values larger than 1KB
 		IgnorePaths: []string{
-			"info._postman_id",     // Auto-generated IDs
-			"info.version",         // Version info that might auto-update
-			"**.id",                // Request IDs
-			"**.currentHelper",     // UI state
-			"**.helperAttributes",  // UI state
+			"collection.info._postman_id",
+			"collection.info.version",
+			"collection.item[*].id",  // More specific paths
+			"**.currentHelper",
+			"**.helperAttributes",
 		},
 		CompactChanges: true,
 	}
@@ -123,8 +133,10 @@ func DefaultPostmanOptions() *CompareOptions {
 
 
 func compareSnapshots(old, new json.RawMessage) []Change {
+
 	opts := DefaultPostmanOptions()
 	changes, err := ComparePostmanSnapshots(old, new, opts)
+
 	if err != nil {
 		slog.Error("Failed to compare snapshots", "error", err)
 		return []Change{}
@@ -138,15 +150,13 @@ func ComparePostmanSnapshots(old, new json.RawMessage, opts *CompareOptions) ([]
 	}
 
 	var oldData, newData interface{}
+
 	if err := json.Unmarshal(old, &oldData); err != nil {
 		return nil, fmt.Errorf("unmarshal old snapshot: %w", err)
 	}
 	if err := json.Unmarshal(new, &newData); err != nil {
 		return nil, fmt.Errorf("unmarshal new snapshot: %w", err)
 	}
-
-		slog.Info("alright we dey here ---->>>>", "old data", oldData)
-	slog.Info("ok here is the old content ---->>", "new data", newData)
 
 	ctx := &compareContext{
 		changes:    make([]Change, 0),
@@ -159,12 +169,6 @@ func ComparePostmanSnapshots(old, new json.RawMessage, opts *CompareOptions) ([]
 	return ctx.changes, nil
 }
 
-type compareContext struct {
-	changes     []Change
-	opts        *CompareOptions
-	pathIndex   map[string]bool
-	changeCount int
-}
 
 func compareRecursive(ctx *compareContext, path string, old, new interface{}, depth int) {
 
@@ -218,7 +222,6 @@ func compareRecursive(ctx *compareContext, path string, old, new interface{}, de
 
 func compareObjects(ctx *compareContext, path string, old, new map[string]interface{}, depth int) {
 	
-	
 	if isLargeObject(old) || isLargeObject(new) {
 		if !deepEqual(old, new) {
 			
@@ -246,9 +249,6 @@ func compareObjects(ctx *compareContext, path string, old, new map[string]interf
 }
 
 func compareArrays(ctx *compareContext, path string, old, new []interface{}, depth int) {
-	
-	
-	
 	
 	if isPostmanItemArray(path) {
 		comparePostmanItems(ctx, path, old, new, depth)
@@ -278,7 +278,7 @@ func compareArrays(ctx *compareContext, path string, old, new []interface{}, dep
 }
 
 func comparePostmanItems(ctx *compareContext, path string, old, new []interface{}, depth int) {
-	
+
 	oldMap := make(map[string]interface{})
 	oldIndices := make(map[string]int)
 	
@@ -328,15 +328,21 @@ func comparePostmanItems(ctx *compareContext, path string, old, new []interface{
 }
 
 func getItemKey(item map[string]interface{}) string {
-	
-	
-	if id, ok := item["id"].(string); ok && id != "" {
-		return "id:" + id
-	}
-	if name, ok := item["name"].(string); ok && name != "" {
-		return "name:" + name
-	}
-	return ""
+    // Use a combination of fields for better uniqueness
+    if request, ok := item["request"].(map[string]interface{}); ok {
+        if url, ok := request["url"].(map[string]interface{}); ok {
+            if raw, ok := url["raw"].(string); ok {
+                if name, ok := item["name"].(string); ok {
+                    return fmt.Sprintf("%s:%s", name, raw)
+                }
+            }
+        }
+    }
+    
+    if name, ok := item["name"].(string); ok && name != "" {
+        return "name:" + name
+    }
+    return ""
 }
 
 func addChange(ctx *compareContext, changeType, path string, value interface{}) {
@@ -413,18 +419,22 @@ func shouldIgnorePath(path string, ignorePaths []string) bool {
 }
 
 func matchPath(path, pattern string) bool {
-	
-	
-	
-	if pattern == path {
-		return true
-	}
-	if strings.Contains(pattern, "**") {
-		prefix := strings.Split(pattern, "**")[0]
-		return strings.HasPrefix(path, prefix)
-	}
-	
-	return false
+    if pattern == path {
+        return true
+    }
+    
+    if strings.Contains(pattern, "**") {
+        parts := strings.Split(pattern, "**")
+        if len(parts) == 2 {
+            prefix := parts[0]
+            suffix := parts[1]
+            return strings.HasPrefix(path, prefix) && strings.HasSuffix(path, suffix)
+        }
+    }
+    
+    pattern = strings.ReplaceAll(pattern, "[*]", `\[\d+\]`)
+    matched, _ := regexp.MatchString("^"+pattern+"$", path)
+    return matched
 }
 
 func isPostmanItemArray(path string) bool {
