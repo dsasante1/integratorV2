@@ -5,14 +5,29 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-
 	"integratorV2/internal/db"
+	"crypto/sha256"
+	"sort"
+	"strings"
+	"time"
 )
+
+
+type NormalizedSnapshot struct {
+	Collection json.RawMessage `json:"collection"`
+	
+}
+
+type SnapshotInfo struct {
+	ID          int64     `json:"id"`
+	ContentHash string    `json:"content_hash"`
+	CreatedAt   time.Time `json:"created_at"`
+}
 
 func StoreCollectionSnapshot(collectionID string, content json.RawMessage, userID int64,) error {
 	slog.Info("Starting collection snapshot process", "collection_id", collectionID)
 
-	// Parse collection metadata
+	
 	collection, err := parseCollectionMetadata(content)
 	if err != nil {
 		slog.Error("Failed to parse collection metadata", "error", err, "collection_id", collectionID)
@@ -82,21 +97,210 @@ func storeCollectionMetadata(collectionID, name string, userID int64) error {
 }
 
 
-func createSnapshot(collectionID string, content json.RawMessage) (int64, error) {
-	hash := fmt.Sprintf("%x", content)
 
+
+func generateContentHash(content json.RawMessage) (string, error) {
+	var snapshot map[string]interface{}
+	if err := json.Unmarshal(content, &snapshot); err != nil {
+		return "", fmt.Errorf("failed to parse snapshot: %w", err)
+	}
+
+	
+	normalized := NormalizedSnapshot{}
+	if collection, ok := snapshot["collection"]; ok {
+		collectionBytes, err := json.Marshal(collection)
+		if err != nil {
+			return "", fmt.Errorf("failed to marshal collection: %w", err)
+		}
+		normalized.Collection = collectionBytes
+	}
+
+	
+	canonicalBytes, err := json.Marshal(normalized)
+	if err != nil {
+		return "", fmt.Errorf("failed to create canonical JSON: %w", err)
+	}
+
+	
+	hash := sha256.Sum256(canonicalBytes)
+	return fmt.Sprintf("%x", hash), nil
+}
+
+
+func generateSemanticHash(content json.RawMessage) (string, error) {
+	var snapshot map[string]interface{}
+	if err := json.Unmarshal(content, &snapshot); err != nil {
+		return "", fmt.Errorf("failed to parse snapshot: %w", err)
+	}
+
+	
+	collection, ok := snapshot["collection"].(map[string]interface{})
+	if !ok {
+		return "", fmt.Errorf("no collection found in snapshot")
+	}
+
+	
+	normalized := normalizeForHashing(collection)
+	
+	
+	canonical := createCanonicalJSON(normalized)
+	
+	
+	hash := sha256.Sum256([]byte(canonical))
+	return fmt.Sprintf("%x", hash), nil
+}
+
+
+func normalizeForHashing(obj interface{}) interface{} {
+	switch v := obj.(type) {
+	case map[string]interface{}:
+		result := make(map[string]interface{})
+		for key, value := range v {
+			
+			if isVolatileField(key) {
+				continue
+			}
+			result[key] = normalizeForHashing(value)
+		}
+		return result
+		
+	case []interface{}:
+		result := make([]interface{}, len(v))
+		for i, item := range v {
+			result[i] = normalizeForHashing(item)
+		}
+		return result
+		
+	default:
+		return v
+	}
+}
+
+// isVolatileField checks if a field should be ignored for content hashing
+func isVolatileField(key string) bool {
+	volatileFields := []string{
+		"_postman_id",     // Auto-generated IDs
+		"id",              // Response IDs that might change
+		"processing_time", // Masking processing time
+		"masked_at",       // Masking timestamp
+		"masking_id",      // Masking session ID
+		"Date",            // HTTP response dates
+		"ETag",            // HTTP ETags
+		"currentHelper",   // UI state
+		"helperAttributes", // UI state
+	}
+	
+	for _, volatile := range volatileFields {
+		if key == volatile {
+			return true
+		}
+	}
+	return false
+}
+
+
+func createCanonicalJSON(obj interface{}) string {
+	switch v := obj.(type) {
+	case map[string]interface{}:
+		var keys []string
+		for k := range v {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		
+		var parts []string
+		for _, k := range keys {
+			value := createCanonicalJSON(v[k])
+			parts = append(parts, fmt.Sprintf(`"%s":%s`, k, value))
+		}
+		return "{" + strings.Join(parts, ",") + "}"
+		
+	case []interface{}:
+		var parts []string
+		for _, item := range v {
+			parts = append(parts, createCanonicalJSON(item))
+		}
+		return "[" + strings.Join(parts, ",") + "]"
+		
+	case string:
+		bytes, _ := json.Marshal(v)
+		return string(bytes)
+		
+	case nil:
+		return "null"
+		
+	default:
+		bytes, _ := json.Marshal(v)
+		return string(bytes)
+	}
+}
+
+
+func createSnapshot(collectionID string, content json.RawMessage) (int64, error) {
+	
+	contentHash, err := generateSemanticHash(content)
+	if err != nil {
+		slog.Warn("Failed to generate semantic hash, falling back to simple hash", "error", err)
+		contentHash, err = generateContentHash(content)
+		if err != nil {
+			return 0, fmt.Errorf("failed to generate content hash: %w", err)
+		}
+	}
+
+	
+	var existingID int64
+	err = db.DB.QueryRow(`
+		SELECT id FROM snapshots 
+		WHERE collection_id = $1 AND hash = $2
+		ORDER BY created_at DESC LIMIT 1
+	`, collectionID, contentHash).Scan(&existingID)
+	
+	if err == nil {
+		slog.Info("Snapshot with identical content already exists", 
+			"collection_id", collectionID, 
+			"existing_snapshot_id", existingID,
+			"hash", contentHash)
+		return existingID, nil
+	}
+
+	
 	var snapshotID int64
-	err := db.DB.QueryRow(`
+	err = db.DB.QueryRow(`
 		INSERT INTO snapshots (collection_id, content, hash)
 		VALUES ($1, $2, $3)
 		RETURNING id
-	`, collectionID, content, hash).Scan(&snapshotID)
+	`, collectionID, content, contentHash).Scan(&snapshotID)
+	
 	if err != nil {
 		return 0, fmt.Errorf("error creating snapshot: %v", err)
 	}
 
-	slog.Info("Created new snapshot", "collection_id", collectionID, "snapshot_id", snapshotID)
+	slog.Info("Created new snapshot", 
+		"collection_id", collectionID, 
+		"snapshot_id", snapshotID,
+		"hash", contentHash)
 	return snapshotID, nil
+}
+
+func hasContentChanged(collectionID string, newContent json.RawMessage) (bool, error) {
+	newHash, err := generateSemanticHash(newContent)
+	if err != nil {
+		return true, fmt.Errorf("failed to generate hash for new content: %w", err)
+	}
+
+	var existingHash string
+	err = db.DB.QueryRow(`
+		SELECT hash FROM snapshots 
+		WHERE collection_id = $1 
+		ORDER BY created_at DESC LIMIT 1
+	`, collectionID).Scan(&existingHash)
+	
+	if err != nil {
+		
+		return true, nil
+	}
+
+	return newHash != existingHash, nil
 }
 
 
@@ -137,7 +341,7 @@ func processSnapshotChanges(collectionID string, newSnapshotID int64) error {
 	return nil
 }
 
-// getPreviousSnapshot retrieves the most recent snapshot before the given one
+
 func getPreviousSnapshot(collectionID string, currentSnapshotID int64) (*int64, json.RawMessage, error) {
 	var oldSnapshotID *int64
 	var oldContent json.RawMessage
