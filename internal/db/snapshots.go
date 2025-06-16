@@ -26,8 +26,11 @@ func GetCollectionSnapshots(collectionID string, offset int, pageSize int, page 
 			s.collection_id AS collection_id,
 			s.snapshot_time AS snapshot_time,
 			c.name as collection_name,
-			jsonb_array_length(
-				content->'collection'->'collection'->'item'
+			COALESCE(
+				jsonb_array_length(
+					content->'collection'->'item'
+				), 
+				0
 			) as item_count,
 			pg_column_size(content::text)/1024 as size_kb
 		FROM snapshots s
@@ -63,9 +66,7 @@ func GetCollectionSnapshots(collectionID string, offset int, pageSize int, page 
 	}
 	return response, nil
 }
-
 func GetSnapshotDetail(snapshotID string) (map[string]interface{}, error) {
-
 	var snapshot Snapshot
 	err := DB.Get(&snapshot, `
 		SELECT * FROM snapshots
@@ -82,7 +83,6 @@ func GetSnapshotDetail(snapshotID string) (map[string]interface{}, error) {
 	}, nil
 }
 
-
 type SnapshotFilterOptions struct {
 	Fields   string // comma-separated list of fields to include
 	Search   string // search term for item names
@@ -91,7 +91,6 @@ type SnapshotFilterOptions struct {
 }
 
 func GetSnapshotItemsFiltered(snapshotID string, collectionID string, page int, pageSize int, filters SnapshotFilterOptions) (map[string]interface{}, error) {
-
 	var snapshotInfo struct {
 		Exists         bool   `db:"exists"`
 		CollectionName string `db:"collection_name"`
@@ -101,7 +100,7 @@ func GetSnapshotItemsFiltered(snapshotID string, collectionID string, page int, 
 		SELECT
 			EXISTS(SELECT 1 FROM snapshots WHERE id = $1) as exists,
 			COALESCE(
-				content->'collection'->'collection'->>'name',
+				content->'collection'->'info'->>'name',
 				''
 			) as collection_name
 		FROM snapshots
@@ -158,8 +157,10 @@ func buildFilteredQuery(snapshotID string, filters SnapshotFilterOptions) (strin
 	whereConditions := []string{}
 	
 	if filters.Search != "" {
+		// Escape single quotes to prevent SQL injection
+		escapedSearch := strings.ReplaceAll(filters.Search, "'", "''")
 		whereConditions = append(whereConditions, 
-			`(item->>'name' ILIKE '%' || '` + filters.Search + `' || '%')`)
+			`(item->>'name' ILIKE '%' || '` + escapedSearch + `' || '%')`)
 	}
 	
 	if filters.ItemType == "folder" {
@@ -176,7 +177,6 @@ func buildFilteredQuery(snapshotID string, filters SnapshotFilterOptions) (strin
 	
 	// shallow - return metrics only
 	if filters.Depth == "shallow" {
-
 		selectClause = `
 			jsonb_build_object(
 				'id', item->>'id',
@@ -193,7 +193,7 @@ func buildFilteredQuery(snapshotID string, filters SnapshotFilterOptions) (strin
 					ELSE 0
 				END,
 				'has_request', item->'request' IS NOT NULL,
-				'method', item->'request'->'method',
+				'method', item->'request'->>'method',
 				'url', item->'request'->'url'->>'raw'
 			) as item`
 	} else if filters.Fields != "" {
@@ -234,13 +234,13 @@ func buildFilteredQuery(snapshotID string, filters SnapshotFilterOptions) (strin
 		selectClause = "item"
 	}
 	
-	// Build main query
+	// Build main query - FIXED: Changed content->'collection'->'collection'->'item' to content->'collection'->'item'
 	query := fmt.Sprintf(`
 		WITH items AS (
 			SELECT %s
 			FROM (
 				SELECT jsonb_array_elements(
-					content->'collection'->'collection'->'item'
+					content->'collection'->'item'
 				) as item
 				FROM snapshots
 				WHERE id = $1
@@ -256,12 +256,12 @@ func buildFilteredQuery(snapshotID string, filters SnapshotFilterOptions) (strin
 		FROM paginated_items
 	`, selectClause, whereClause)
 	
-	// Build count query
+	// Build count query - FIXED: Changed content->'collection'->'collection'->'item' to content->'collection'->'item'
 	countQuery := fmt.Sprintf(`
 		SELECT COUNT(*)::int
 		FROM (
 			SELECT jsonb_array_elements(
-				content->'collection'->'collection'->'item'
+				content->'collection'->'item'
 			) as item
 			FROM snapshots
 			WHERE id = $1
@@ -277,7 +277,7 @@ func GetSnapshotItemsFlattened(snapshotID string, collectionID string) ([]map[st
 		WITH RECURSIVE item_tree AS (
 			-- Base case: top-level items
 			SELECT 
-				jsonb_array_elements(content->'collection'->'collection'->'item') as item,
+				jsonb_array_elements(content->'collection'->'item') as item,
 				'' as parent_id,
 				0 as depth
 			FROM snapshots
@@ -306,7 +306,7 @@ func GetSnapshotItemsFlattened(snapshotID string, collectionID string) ([]map[st
 					WHEN item->'item' IS NOT NULL THEN 'folder'
 					ELSE 'unknown'
 				END,
-				'method', item->'request'->'method',
+				'method', item->'request'->>'method',
 				'url', item->'request'->'url'->>'raw'
 			) as item_summary
 		FROM item_tree
