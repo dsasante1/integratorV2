@@ -30,9 +30,8 @@ func SetupRoutes(api *echo.Group) {
 	collections.POST("/api-key/rotate", handlers.RotateAPIKey)
 	collections.GET("", handlers.GetCollections)
 	collections.GET("/user", handlers.GetUserCollections)
+	// save collection or create snapshot
 	collections.POST("/save-collection", handlers.SaveCollection)
-
-	collections.GET("/:id", handlers.GetCollection)
 
 	collections.GET("/:id/snapshots", handlers.GetCollectionSnapshots)
 	collections.GET("/:id/snapshots/:snapshotId", handlers.GetSnapshotDetail)

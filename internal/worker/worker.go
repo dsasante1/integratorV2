@@ -96,6 +96,7 @@ func (w *Worker) handleCollectionImport(ctx context.Context, t *asynq.Task) erro
 	}
 
 	collection, err := postman.GetCollection(apiKey, payload.CollectionID)
+
 	if err != nil {
 		errMsg := "Failed to fetch collection from Postman"
 
@@ -109,6 +110,7 @@ func (w *Worker) handleCollectionImport(ctx context.Context, t *asynq.Task) erro
 		return err
 	}
 
+
 	maskedCollection, err := postman.MaskCollection(collection)
 	if err != nil {
 		errMsg := "Failed to mask sensitive data in collection"
@@ -117,7 +119,7 @@ func (w *Worker) handleCollectionImport(ctx context.Context, t *asynq.Task) erro
 			UserID:  userIDStr,
 			Type:    "fail",
 			Title:   "fetch collection snapshot failed",
-			Message: fmt.Sprintf("fetch collection snaphot data failed '%s'", payload.Name),
+			Message: fmt.Sprintf("fetch collection snapshot data failed '%s'", payload.Name),
 		})
 
 		slog.Error(errMsg, "error", err, "user_id", payload.UserID, "collection_id", payload.CollectionID)
@@ -132,7 +134,7 @@ func (w *Worker) handleCollectionImport(ctx context.Context, t *asynq.Task) erro
 			UserID:  userIDStr,
 			Type:    "fail",
 			Title:   "fetch collection snapshot failed",
-			Message: fmt.Sprintf("fetch collection snaphot data failed '%s'", payload.Name),
+			Message: fmt.Sprintf("fetch collection snapshot data failed '%s'", payload.Name),
 		})
 		slog.Error(errMsg, "error", err, "user_id", payload.UserID, "collection_id", payload.CollectionID)
 		return err

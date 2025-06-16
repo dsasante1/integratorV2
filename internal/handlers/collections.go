@@ -1,7 +1,7 @@
 package handlers
 
 import (
-	"encoding/json"
+	// "encoding/json"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -182,92 +182,6 @@ func SaveCollection(c echo.Context) error {
 	})
 }
 
-func GetCollection(c echo.Context) error {
-	userID := c.Get("user_id").(int64)
-
-	collectionID := c.Param("id")
-	if collectionID == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Collection ID is required"})
-	}
-
-	page := 1
-	pageSize := 10
-
-	if pageStr := c.QueryParam("page"); pageStr != "" {
-		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
-			page = p
-		}
-	}
-
-	if pageSizeStr := c.QueryParam("page_size"); pageSizeStr != "" {
-		if ps, err := strconv.Atoi(pageSizeStr); err == nil && ps > 0 && ps <= 100 {
-			pageSize = ps
-		}
-	}
-
-	apiKey, err := db.GetPostmanAPIKey(userID)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "No API key found. Please store your Postman API key first."})
-	}
-
-	// Get collection from Postman
-	collection, err := postman.GetCollection(apiKey, collectionID)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch collection from Postman"})
-	}
-
-	// Mask sensitive data in the collection
-	maskedCollection, err := postman.MaskCollection(collection)
-	if err != nil {
-		slog.Error("Failed to mask sensitive data", "error", err, "user_id", userID, "collection_id", collectionID)
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to process collection data"})
-	}
-
-	// Store collection content as snapshot
-	content, _ := json.Marshal(maskedCollection)
-	if err := postman.StoreCollectionSnapshot(collectionID, content, userID); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to store collection snapshot"})
-	}
-
-	// Parse the items from the collection
-	var items []interface{}
-	if err := json.Unmarshal(collection.Collection.Item, &items); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to parse collection items"})
-	}
-
-	// Calculate pagination for items
-	totalItems := len(items)
-	start := (page - 1) * pageSize
-	end := start + pageSize
-	if end > totalItems {
-		end = totalItems
-	}
-
-	// Get paginated items
-	var paginatedItems []interface{}
-	if start < totalItems {
-		paginatedItems = items[start:end]
-	}
-
-	// Create paginated response
-	response := map[string]interface{}{
-		"id":   collection.Collection.ID,
-		"name": collection.Collection.Name,
-		"info": collection.Collection.Info,
-		"item": paginatedItems,
-	}
-
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"data": response,
-		"pagination": map[string]interface{}{
-			"page":        page,
-			"page_size":   pageSize,
-			"total":       totalItems,
-			"total_pages": (totalItems + pageSize - 1) / pageSize,
-		},
-	})
-}
-
 func GetCollectionSnapshots(c echo.Context) error {
 	collectionID := c.Param("id")
 	page := getPage(c)
@@ -317,7 +231,7 @@ func GetCollectionChanges(c echo.Context) error {
 
 	change, err := db.GetCollectionChanges(collectionID, page, pageSize)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch collection changes"})
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "fetch collection changes failed"})
 	}
 
 	return c.JSON(http.StatusOK, change)

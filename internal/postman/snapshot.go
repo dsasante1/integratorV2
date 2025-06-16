@@ -103,6 +103,8 @@ func createSnapshot(collectionID string, content json.RawMessage) (int64, error)
 func processSnapshotChanges(collectionID string, newSnapshotID int64) error {
 
 	oldSnapshotID, oldContent, err := getPreviousSnapshot(collectionID, newSnapshotID)
+	slog.Info("alright we dey here ---->>>>", "old snapshot", oldSnapshotID)
+	slog.Info("ok here is the old content ---->>", "old contents", oldContent)
 	if err != nil {
 		return err
 	}
@@ -119,6 +121,8 @@ func processSnapshotChanges(collectionID string, newSnapshotID int64) error {
 	if err != nil {
 		return fmt.Errorf("error getting new snapshot content: %v", err)
 	}
+
+	slog.Info("ok here is the new content ---->>", "new contents", newContent)
 
 	changes := compareSnapshots(oldContent, newContent)
 	if err := storeChanges(collectionID, oldSnapshotID, newSnapshotID, changes); err != nil {
@@ -153,17 +157,36 @@ func getPreviousSnapshot(collectionID string, currentSnapshotID int64) (*int64, 
 
 
 func storeChanges(collectionID string, oldSnapshotID *int64, newSnapshotID int64, changes []Change) error {
-	for _, change := range changes {
-		_, err := db.DB.Exec(`
-			INSERT INTO changes (
-				collection_id, old_snapshot_id, new_snapshot_id,
-				change_type, path, old_value, new_value
-			) VALUES ($1, $2, $3, $4, $5, $6, $7)
-		`, collectionID, oldSnapshotID, newSnapshotID,
-			change.Type, change.Path, change.OldValue, change.NewValue)
-		if err != nil {
-			return fmt.Errorf("error storing change: %v", err)
-		}
-	}
-	return nil
+    if len(changes) == 0 {
+        return nil
+    }
+
+    tx, err := db.DB.Begin()
+    if err != nil {
+        return fmt.Errorf("begin transaction: %w", err)
+    }
+    defer tx.Rollback()
+
+    stmt, err := tx.Prepare(`
+        INSERT INTO changes (
+            collection_id, old_snapshot_id, new_snapshot_id,
+            change_type, path, modification
+        ) VALUES ($1, $2, $3, $4, $5, $6)
+    `)
+    if err != nil {
+        return fmt.Errorf("prepare statement: %w", err)
+    }
+    defer stmt.Close()
+
+    for _, change := range changes {
+        _, err := stmt.Exec(
+            collectionID, oldSnapshotID, newSnapshotID,
+            change.Type, change.Path, change.Modification,
+        )
+        if err != nil {
+            return fmt.Errorf("insert change: %w", err)
+        }
+    }
+
+    return tx.Commit()
 }

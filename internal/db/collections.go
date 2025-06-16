@@ -33,8 +33,7 @@ type Change struct {
 	NewSnapshotID int64     `db:"new_snapshot_id" json:"new_snapshot_id"`
 	ChangeType    string    `db:"change_type" json:"change_type"`
 	Path          string    `db:"path" json:"path"`
-	OldValue      *string   `db:"old_value" json:"old_value"`
-	NewValue      *string   `db:"new_value" json:"new_value"`
+	Modification  *string   `db:"modification" json:"modification"`
 	ChangeTime    time.Time `db:"change_time" json:"change_time"`
 }
 
