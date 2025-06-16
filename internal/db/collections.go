@@ -16,6 +16,8 @@ type Collection struct {
 	Name      string    `db:"name" json:"name"`
 	FirstSeen time.Time `db:"first_seen" json:"first_seen"`
 	LastSeen  time.Time `db:"last_seen" json:"last_seen"`
+	CreatedAt time.Time `db:"created_at" json:"created_at"`
+	UpdatedAt time.Time `db:"updated_at" json:"updated_at"`
 }
 
 type Snapshot struct {
