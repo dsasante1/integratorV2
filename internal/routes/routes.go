@@ -43,6 +43,26 @@ func SetupRoutes(api *echo.Group) {
 	collections.GET("/:id/changes", handlers.GetCollectionChanges)
 	collections.GET("/snapshot/compare/:id", handlers.CompareSnapShots)
 
+
+
+	collections.GET("/:id/changes/summary", handlers.GetChangeSummaryHandler)
+	
+	// List changes with filtering
+	collections.GET("/:id/changes", handlers.GetChangesHandler)
+	
+	// Hierarchical view
+	collections.GET("/:id/snapshots/:snapshotId/hierarchy", handlers.GetChangeHierarchyHandler)
+	
+	// Changes by endpoint
+	collections.GET("/:id/snapshots/:snapshotId/endpoint/changes", handlers.GetChangesByEndpointHandler)
+	
+	// Change details
+	// collections.GET("/change-details/:id", handlers.GetChangeDetailsHandler)
+
+
+
+
+
 	jobs := api.Group("/jobs")
 	jobs.GET("", handlers.GetUserJobs)
 	jobs.GET("/:id", handlers.GetJobStatus)

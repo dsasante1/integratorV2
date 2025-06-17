@@ -64,6 +64,7 @@ type User struct {
 	Email     string    `db:"email" json:"email" validate:"required,email"`
 	Password  string    `db:"password" json:"-" validate:"required,password"`
 	CreatedAt time.Time `db:"created_at" json:"created_at"`
+	UpdatedAt time.Time `db:"updated_at" json:"updated_at"`
 }
 
 type SignupRequest struct {
