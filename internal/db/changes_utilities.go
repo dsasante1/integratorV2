@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// ChangeImpactAnalysis represents the impact analysis of changes
+ 
 type ChangeImpactAnalysis struct {
 	CollectionID      string                `json:"collection_id"`
 	SnapshotID        int64                 `json:"snapshot_id"`
@@ -58,7 +58,7 @@ type EndpointVolatility struct {
 	ChangeTypes  map[string]int `json:"change_types"`
 }
 
-// AnalyzeChangeImpact performs impact analysis on changes
+
 func AnalyzeChangeImpact(collectionID string, snapshotID int64) (*ChangeImpactAnalysis, error) {
 	// Get all changes for the snapshot
 	filter := ChangeFilter{
@@ -153,7 +153,7 @@ func analyzeIndividualChange(change *ChangeDetail) *ImpactDetail {
 		impact.Impact = "New response added - additional test coverage needed"
 		impact.Suggestions = append(impact.Suggestions, "Add tests for new response scenario")
 		
-	// Cosmetic changes
+	 
 	case strings.Contains(change.Path, ".name") || strings.Contains(change.Path, ".description"):
 		impact.Severity = "low"
 		impact.Impact = "Documentation/naming change only"
@@ -187,7 +187,6 @@ func calculateImpactSummary(analysis *ChangeImpactAnalysis) ImpactSummary {
 		}
 	}
 	
-	// Generate recommendation
 	switch {
 	case summary.RiskScore >= 80:
 		summary.Recommendation = "CRITICAL: Major breaking changes detected. Extensive testing and communication required."
@@ -204,12 +203,11 @@ func calculateImpactSummary(analysis *ChangeImpactAnalysis) ImpactSummary {
 	return summary
 }
 
-// GetChangeFrequencyAnalysis analyzes which paths change most frequently
+
 func GetChangeFrequencyAnalysis(collectionID string, days int) (*ChangeFrequencyAnalysis, error) {
 	endTime := time.Now()
 	startTime := endTime.AddDate(0, 0, -days)
 	
-	// Query for path frequencies
 	query := `
 		SELECT 
 			path,
@@ -254,14 +252,12 @@ func GetChangeFrequencyAnalysis(collectionID string, days int) (*ChangeFrequency
 		paths = append(paths, pf)
 	}
 	
-	// Calculate percentages
 	for i := range paths {
 		paths[i].Percentage = (float64(paths[i].Count) / float64(totalChanges)) * 100
 	}
 	
 	analysis.FrequentPaths = paths
 	
-	// Get volatile endpoints
 	analysis.VolatileEndpoints, err = getVolatileEndpoints(collectionID, startTime, endTime)
 	if err != nil {
 		return nil, err
@@ -271,7 +267,6 @@ func GetChangeFrequencyAnalysis(collectionID string, days int) (*ChangeFrequency
 }
 
 func getVolatileEndpoints(collectionID string, startTime, endTime time.Time) ([]EndpointVolatility, error) {
-	// Query for endpoint volatility
 	query := `
 		SELECT 
 			COALESCE(
@@ -296,7 +291,6 @@ func getVolatileEndpoints(collectionID string, startTime, endTime time.Time) ([]
 	}
 	defer rows.Close()
 	
-	// Group by endpoint
 	endpointMap := make(map[string]*EndpointVolatility)
 	
 	for rows.Next() {
@@ -327,13 +321,12 @@ func getVolatileEndpoints(collectionID string, startTime, endTime time.Time) ([]
 		}
 	}
 	
-	// Convert to slice
+
 	volatility := make([]EndpointVolatility, 0, len(endpointMap))
 	for _, ev := range endpointMap {
 		volatility = append(volatility, *ev)
 	}
 	
-	// Sort by change count
 	sort.Slice(volatility, func(i, j int) bool {
 		return volatility[i].ChangeCount > volatility[j].ChangeCount
 	})
@@ -341,9 +334,7 @@ func getVolatileEndpoints(collectionID string, startTime, endTime time.Time) ([]
 	return volatility, nil
 }
 
-// CompareSnapshots generates a detailed comparison between two snapshots
 func CompareSnapshots(collectionID string, oldSnapshotID, newSnapshotID int64) (map[string]interface{}, error) {
-	// Get changes between snapshots
 	query := `
 		SELECT 
 			change_type,
@@ -386,15 +377,14 @@ func CompareSnapshots(collectionID string, oldSnapshotID, newSnapshotID int64) (
 			continue
 		}
 		
-		// Update statistics
 		stats[changeType]++
 		stats["total"]++
 		
-		// Track affected paths by type
+
 		resourceType := extractResourceType(path)
 		affectedPaths[resourceType] = append(affectedPaths[resourceType], path)
 		
-		// Create change entry
+
 		change := map[string]interface{}{
 			"type":       changeType,
 			"path":       path,
@@ -403,7 +393,7 @@ func CompareSnapshots(collectionID string, oldSnapshotID, newSnapshotID int64) (
 		}
 		
 		if modification != nil {
-			// Try to parse modification
+			 
 			var parsed interface{}
 			if err := json.Unmarshal([]byte(*modification), &parsed); err == nil {
 				change["modification"] = parsed
@@ -417,7 +407,7 @@ func CompareSnapshots(collectionID string, oldSnapshotID, newSnapshotID int64) (
 	
 	comparison["changes"] = changes
 	
-	// Add metadata about both snapshots
+	 
 	snapshotQuery := `
 		SELECT id, content_hash, created_at
 		FROM snapshots
@@ -451,13 +441,12 @@ func CompareSnapshots(collectionID string, oldSnapshotID, newSnapshotID int64) (
 }
 
 func EnhanceChangeDetail(change *ChangeDetail) {
-	// Parse path into segments
+
 	change.PathSegments = parsePathSegments(change.Path)
 
-	// Generate human-readable path
+
 	change.HumanPath = generateHumanPath(change.PathSegments)
 
-	// Extract endpoint name and resource type
 	change.EndpointName = extractEndpointName(change.Path, change.Modification)
 	change.ResourceType = extractResourceType(change.Path)
 }

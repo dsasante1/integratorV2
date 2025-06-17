@@ -10,7 +10,7 @@ import (
 	// "log/slog"
 )
 
-// ChangeDetail represents a single change with full details
+ 
 type ChangeDetail struct {
 	ID             int64      `json:"id"`
 	CollectionID   string     `json:"collection_id"`
@@ -21,14 +21,14 @@ type ChangeDetail struct {
 	Modification   *string    `json:"modification"`
 	CreatedAt      time.Time  `json:"created_at"`
 	
-	// Computed fields for display
+	 
 	HumanPath      string     `json:"human_path"`
 	PathSegments   []string   `json:"path_segments"`
 	EndpointName   string     `json:"endpoint_name,omitempty"`
 	ResourceType   string     `json:"resource_type,omitempty"`
 }
 
-// ChangeSummary provides high-level statistics
+ 
 type ChangeSummary struct {
 	CollectionID     string                 `json:"collection_id"`
 	TotalChanges     int                    `json:"total_changes"`
@@ -43,7 +43,7 @@ type TimeRange struct {
 	Latest   time.Time `json:"latest"`
 }
 
-// ChangeFilter provides filtering options
+ 
 type ChangeFilter struct {
 	CollectionID   string
 	ChangeTypes    []string
@@ -55,7 +55,7 @@ type ChangeFilter struct {
 	Offset         int
 }
 
-// ChangeNode represents a hierarchical view of changes
+ 
 type ChangeNode struct {
 	Name         string                 `json:"name"`
 	Path         string                 `json:"path"`
@@ -66,7 +66,7 @@ type ChangeNode struct {
 	Change       *ChangeDetail          `json:"change,omitempty"`
 }
 
-// GetChangeSummary retrieves a high-level summary of changes
+
 func GetChangeSummary(collectionID string, oldSnapshotID *int64, newSnapshotID *int64) (*ChangeSummary, error) {
 	summary := &ChangeSummary{
 		CollectionID:  collectionID,
@@ -74,7 +74,6 @@ func GetChangeSummary(collectionID string, oldSnapshotID *int64, newSnapshotID *
 		ChangesByPath: make(map[string]int),
 	}
 
-	// Get total changes and changes by type
 	query := `
 		SELECT 
 			COUNT(*) as total,
@@ -106,7 +105,7 @@ func GetChangeSummary(collectionID string, oldSnapshotID *int64, newSnapshotID *
 		summary.ChangesByType[changeType] = typeCount
 	}
 
-	// Get time range
+	 
 	timeQuery := `
 		SELECT 
 			MIN(created_at) as earliest,
@@ -130,7 +129,7 @@ func GetChangeSummary(collectionID string, oldSnapshotID *int64, newSnapshotID *
 		summary.TimeRange.Latest = latest.Time
 	}
 
-	// Get affected endpoints
+	 
 	endpointQuery := `
 		SELECT DISTINCT
 			CASE 
@@ -170,13 +169,12 @@ func GetChangeSummary(collectionID string, oldSnapshotID *int64, newSnapshotID *
 	return summary, nil
 }
 
-// GetChanges retrieves changes with filtering and pagination
 func GetChanges(filter ChangeFilter) ([]*ChangeDetail, int, error) {
 	var conditions []string
 	var args []interface{}
 	argCount := 0
 
-	// Build WHERE conditions
+	 
 	conditions = append(conditions, fmt.Sprintf("collection_id = $%d", argCount+1))
 	args = append(args, filter.CollectionID)
 	argCount++
@@ -217,7 +215,6 @@ func GetChanges(filter ChangeFilter) ([]*ChangeDetail, int, error) {
 
 	whereClause := strings.Join(conditions, " AND ")
 
-	// Get total count
 	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM changes WHERE %s", whereClause)
 	var totalCount int
 	err := DB.QueryRow(countQuery, args...).Scan(&totalCount)
@@ -225,7 +222,6 @@ func GetChanges(filter ChangeFilter) ([]*ChangeDetail, int, error) {
 		return nil, 0, fmt.Errorf("failed to get count: %w", err)
 	}
 
-	// Get paginated results
 	query := fmt.Sprintf(`
 		SELECT 
 			id, collection_id, old_snapshot_id, new_snapshot_id,
@@ -261,7 +257,7 @@ func GetChanges(filter ChangeFilter) ([]*ChangeDetail, int, error) {
 			return nil, 0, fmt.Errorf("failed to scan change: %w", err)
 		}
 
-		// Enhance with computed fields
+		 
 		enhanceChangeDetail(change)
 		changes = append(changes, change)
 	}
@@ -269,9 +265,8 @@ func GetChanges(filter ChangeFilter) ([]*ChangeDetail, int, error) {
 	return changes, totalCount, nil
 }
 
-// GetChangeHierarchy retrieves changes organized in a tree structure
 func GetChangeHierarchy(collectionID string, snapshotID int64) (*ChangeNode, error) {
-	// First, get all changes
+	 
 	filter := ChangeFilter{
 		CollectionID: collectionID,
 		SnapshotID:   &snapshotID,
@@ -283,7 +278,7 @@ func GetChangeHierarchy(collectionID string, snapshotID int64) (*ChangeNode, err
 		return nil, err
 	}
 
-	// Build tree structure
+	 
 	root := &ChangeNode{
 		Name:     "Collection",
 		Path:     "collection",
@@ -291,7 +286,7 @@ func GetChangeHierarchy(collectionID string, snapshotID int64) (*ChangeNode, err
 		Children: make([]*ChangeNode, 0),
 	}
 
-	// Group changes by path segments
+	 
 	pathMap := make(map[string]*ChangeNode)
 	pathMap["collection"] = root
 
@@ -299,13 +294,13 @@ func GetChangeHierarchy(collectionID string, snapshotID int64) (*ChangeNode, err
 		addChangeToHierarchy(change, root, pathMap)
 	}
 
-	// Calculate change counts
+	 
 	calculateChangeCounts(root)
 
 	return root, nil
 }
 
-// GetChangesByEndpoint retrieves changes grouped by endpoint
+ 
 func GetChangesByEndpoint(collectionID string, snapshotID int64) (map[string][]*ChangeDetail, error) {
 	query := `
 		SELECT 
@@ -342,7 +337,7 @@ func GetChangesByEndpoint(collectionID string, snapshotID int64) (map[string][]*
 
 		enhanceChangeDetail(change)
 		
-		// Group by endpoint name
+		 
 		endpoint := change.EndpointName
 		if endpoint == "" {
 			endpoint = "Collection Settings"
@@ -388,16 +383,16 @@ func GetChangeDetails(changeID int64) (change ChangeDetail, err error) {
 	return change, nil
 }
 
-// Helper functions
+//TODO move to utilities Helper functions
 
 func enhanceChangeDetail(change *ChangeDetail) {
-	// Parse path into segments
+	 
 	change.PathSegments = parsePathSegments(change.Path)
 	
-	// Generate human-readable path
+	 
 	change.HumanPath = generateHumanPath(change.PathSegments)
 	
-	// Extract endpoint name and resource type
+	 
 	change.EndpointName = extractEndpointName(change.Path, change.Modification)
 	change.ResourceType = extractResourceType(change.Path)
 }
@@ -463,7 +458,7 @@ func generateHumanPath(segments []string) string {
 			parts = append(parts, "URL")
 		default:
 			if strings.HasPrefix(seg, "[") && strings.HasSuffix(seg, "]") {
-				// Array index
+				 
 				index := seg[1:len(seg)-1]
 				if i > 0 && segments[i-1] == "item" {
 					parts = append(parts, fmt.Sprintf("#%s", index))
@@ -480,13 +475,13 @@ func generateHumanPath(segments []string) string {
 }
 
 func extractEndpointName(path string, modification *string) string {
-	// Try to extract from path
+	 
 	if strings.Contains(path, "item[") {
-		// Extract item index
+		 
 		re := regexp.MustCompile(`item\[(\d+)\]`)
 		matches := re.FindStringSubmatch(path)
 		if len(matches) > 1 {
-			// Try to get name from modification if it's a name change
+			 
 			if strings.HasSuffix(path, "].name") && modification != nil {
 				var name string
 				if err := json.Unmarshal([]byte(*modification), &name); err == nil {
@@ -527,7 +522,7 @@ func addChangeToHierarchy(change *ChangeDetail, root *ChangeNode, pathMap map[st
 		if node, exists := pathMap[currentPath]; exists {
 			currentNode = node
 		} else {
-			// Create new node
+			 
 			newNode := &ChangeNode{
 				Name:     segment,
 				Path:     currentPath,
@@ -535,7 +530,7 @@ func addChangeToHierarchy(change *ChangeDetail, root *ChangeNode, pathMap map[st
 				Children: make([]*ChangeNode, 0),
 			}
 			
-			// Make it more readable
+			 
 			if strings.HasPrefix(segment, "[") && strings.HasSuffix(segment, "]") {
 				index := segment[1:len(segment)-1]
 				if i > 0 && segments[i-1] == "item" {
@@ -552,7 +547,7 @@ func addChangeToHierarchy(change *ChangeDetail, root *ChangeNode, pathMap map[st
 		}
 	}
 	
-	// Add the actual change as a leaf node
+	 
 	changeNode := &ChangeNode{
 		Name:       fmt.Sprintf("%s: %s", change.ChangeType, segments[len(segments)-1]),
 		Path:       change.Path,
