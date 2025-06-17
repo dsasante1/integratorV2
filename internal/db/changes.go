@@ -4,9 +4,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
-	"regexp"
+	// "log/slog"
 )
 
 // ChangeDetail represents a single change with full details
@@ -66,7 +67,7 @@ type ChangeNode struct {
 }
 
 // GetChangeSummary retrieves a high-level summary of changes
-func GetChangeSummary(collectionID string, oldSnapshotID *int64, newSnapshotID int64) (*ChangeSummary, error) {
+func GetChangeSummary(collectionID string, oldSnapshotID *int64, newSnapshotID *int64) (*ChangeSummary, error) {
 	summary := &ChangeSummary{
 		CollectionID:  collectionID,
 		ChangesByType: make(map[string]int),
@@ -353,7 +354,41 @@ func GetChangesByEndpoint(collectionID string, snapshotID int64) (map[string][]*
 	return endpointChanges, nil
 }
 
-//TODO move these to utilities
+func GetChangeDetails(changeID int64) (change ChangeDetail, err error) {
+		 
+	query := `
+		SELECT 
+			id, collection_id, old_snapshot_id, new_snapshot_id,
+			change_type, path, modification, created_at
+		FROM changes
+		WHERE id = $1
+	`
+	change = ChangeDetail{}
+	err = DB.QueryRow(query, changeID).Scan(
+		&change.ID,
+		&change.CollectionID,
+		&change.OldSnapshotID,
+		&change.NewSnapshotID,
+		&change.ChangeType,
+		&change.Path,
+		&change.Modification,
+		&change.CreatedAt,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return ChangeDetail{}, fmt.Errorf("Change not found")
+		}
+
+		return ChangeDetail{}, fmt.Errorf("internal server error")
+	}
+
+	EnhanceChangeDetail(&change)
+
+	return change, nil
+}
+
+// Helper functions
 
 func enhanceChangeDetail(change *ChangeDetail) {
 	// Parse path into segments

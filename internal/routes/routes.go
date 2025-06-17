@@ -45,23 +45,27 @@ func SetupRoutes(api *echo.Group) {
 
 
 
-	collections.GET("/:id/changes/summary", handlers.GetChangeSummaryHandler)
+	collections.GET("/:collectionId/changes/summary/:oldSnapshot/:newSnapshot", handlers.GetChangeSummary)
 	
 	// List changes with filtering
-	collections.GET("/:id/changes", handlers.GetChangesHandler)
+	collections.GET("/:collectionId/changes", handlers.GetChanges)
 	
 	// Hierarchical view
-	collections.GET("/:id/snapshots/:snapshotId/hierarchy", handlers.GetChangeHierarchyHandler)
+	collections.GET("/:id/snapshots/:snapshotId/hierarchy", handlers.GetChangeHierarchy)
 	
 	// Changes by endpoint
-	collections.GET("/:id/snapshots/:snapshotId/endpoint/changes", handlers.GetChangesByEndpointHandler)
+	collections.GET("/:collectionId/snapshots/:snapshotId/by-endpoint", handlers.GetChangesByEndpoint)
 	
 	// Change details
-	// collections.GET("/change-details/:id", handlers.GetChangeDetailsHandler)
-
-
-
-
+	collections.GET("/changes/:changeId", handlers.GetChangeDetails)
+	
+	// Export changes
+	collections.GET("/:id/changes/export", handlers.ExportChanges)
+	
+	// Advanced analysis endpoints
+	collections.GET("/:collectionId/snapshots/:snapshotId/impact-analysis", handlers.GetChangeImpactAnalysis)
+	collections.GET("/:collectionId/changes/frequency-analysis", handlers.GetChangeFrequencyAnalysis)
+	collections.GET("/:collectionId/snapshots/compare", handlers.CompareSnapshots)
 
 	jobs := api.Group("/jobs")
 	jobs.GET("", handlers.GetUserJobs)
