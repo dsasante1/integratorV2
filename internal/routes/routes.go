@@ -58,6 +58,8 @@ func SetupRoutes(api *echo.Group) {
 	
 	// Change details
 	collections.GET("/changes/:changeId", handlers.GetChangeDetails)
+
+	collections.GET("/:collectionId/change/summary", handlers.GetCollectionChangeSummary)
 	
 	// Export changes
 	collections.GET("/:id/changes/export", handlers.ExportChanges)

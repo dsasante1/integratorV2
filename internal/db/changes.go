@@ -67,6 +67,104 @@ type ChangeNode struct {
 }
 
 
+func GetCollectionChangeSummary(collectionID string) (*ChangeSummary, error) {
+	summary := &ChangeSummary{
+		CollectionID:  collectionID,
+		ChangesByType: make(map[string]int),
+		ChangesByPath: make(map[string]int),
+	}
+
+	query := `
+		SELECT 
+			COUNT(*) as total,
+			change_type,
+			COUNT(*) as type_count
+		FROM changes
+		WHERE collection_id = $1
+		GROUP BY change_type
+	`
+	
+	rows, err := DB.Query(query, collectionID,)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get change summary: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var total int
+		var changeType string
+		var typeCount int
+		
+		if err := rows.Scan(&total, &changeType, &typeCount); err != nil {
+			return nil, err
+		}
+		
+		summary.TotalChanges = total
+		summary.ChangesByType[changeType] = typeCount
+	}
+
+	 
+	timeQuery := `
+		SELECT 
+			MIN(created_at) as earliest,
+			MAX(created_at) as latest
+		FROM changes
+		WHERE collection_id = $1
+	`
+	
+	var earliest, latest sql.NullTime
+	err = DB.QueryRow(timeQuery, collectionID).Scan(&earliest, &latest)
+	if err != nil && err != sql.ErrNoRows {
+		return nil, fmt.Errorf("failed to get time range: %w", err)
+	}
+	
+	if earliest.Valid {
+		summary.TimeRange.Earliest = earliest.Time
+	}
+	if latest.Valid {
+		summary.TimeRange.Latest = latest.Time
+	}
+
+	 
+	endpointQuery := `
+		SELECT DISTINCT
+			CASE 
+				WHEN path LIKE 'collection.item[%].name' THEN modification
+				WHEN path LIKE 'collection.item[%].request%' THEN 
+					SUBSTRING(path FROM 'collection\.item\[(\d+)\]')
+				ELSE NULL
+			END as endpoint
+		FROM changes
+		WHERE collection_id = $1
+			AND path LIKE 'collection.item[%]%'
+	`
+	
+	endpointRows, err := DB.Query(endpointQuery, collectionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get affected endpoints: %w", err)
+	}
+	defer endpointRows.Close()
+
+	endpointSet := make(map[string]bool)
+	for endpointRows.Next() {
+		var endpoint sql.NullString
+		if err := endpointRows.Scan(&endpoint); err != nil {
+			continue
+		}
+		if endpoint.Valid && endpoint.String != "" {
+			endpointSet[endpoint.String] = true
+		}
+	}
+	
+	for endpoint := range endpointSet {
+		summary.AffectedEndpoints = append(summary.AffectedEndpoints, endpoint)
+	}
+
+	return summary, nil
+
+
+}
+
 func GetChangeSummary(collectionID string, oldSnapshotID *int64, newSnapshotID *int64) (*ChangeSummary, error) {
 	summary := &ChangeSummary{
 		CollectionID:  collectionID,

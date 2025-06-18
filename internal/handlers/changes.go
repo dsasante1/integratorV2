@@ -11,6 +11,18 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+
+func GetCollectionChangeSummary(c echo.Context) error {
+		collectionID := c.Param("collectionId")
+
+		summary, err := db.GetCollectionChangeSummary(collectionID)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+	
+	return c.JSON(http.StatusOK, summary)
+}
+
  
 func GetChangeSummary(c echo.Context) error {
 	collectionID := c.Param("collectionId")
