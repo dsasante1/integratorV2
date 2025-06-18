@@ -285,7 +285,7 @@ func CompareSnapShots(c echo.Context) error {
 	userID := c.Get("user_id").(int64)
 
 	
-	collectionID := c.Param("id")
+	collectionID := c.Param("collectionId")
 	if collectionID == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Collection ID is required"})
 	}

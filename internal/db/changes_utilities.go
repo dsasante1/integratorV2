@@ -96,7 +96,6 @@ func AnalyzeChangeImpact(collectionID string, snapshotID int64) (*ChangeImpactAn
 		}
 	}
 	
-	// Calculate summary
 	analysis.Summary = calculateImpactSummary(analysis)
 	
 	return analysis, nil

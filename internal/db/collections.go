@@ -26,6 +26,9 @@ type Snapshot struct {
 	SnapshotTime time.Time       `db:"snapshot_time" json:"snapshot_time"`
 	Content      json.RawMessage `db:"content" json:"content"`
 	Hash         string          `db:"hash" json:"hash"`
+	CreatedAt time.Time `db:"created_at" json:"created_at"`
+	UpdatedAt time.Time `db:"updated_at" json:"updated_at"`
+	SnapshotID sql.NullString `db:"snapshot_id" json:"snapshot_id"`
 }
 
 type Change struct {
