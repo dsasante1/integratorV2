@@ -1,0 +1,1 @@
+ALTER TABLE IF EXISTS snapshots DROP COLUMN IF EXISTS snapshot_id;

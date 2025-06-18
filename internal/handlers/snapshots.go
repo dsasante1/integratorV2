@@ -11,7 +11,19 @@ import (
 	"github.com/lib/pq"
 )
 
-// GetSnapshotDetail retrieves a specific snapshot with optional field filtering
+func GetSnapshotID(c echo.Context) error {
+	collectionID := c.Param("collectionId")
+	snapshotID, err := db.GetSnapshotIDs(collectionID)
+
+	if err != nil {
+		slog.Error("failed to fetch snapshot IDs", "error", err)
+		return c.JSON(http.StatusNotFound,
+		map[string]string{"error": "Snapshot IDs not found"})
+	}
+
+	return c.JSON(http.StatusOK, snapshotID)
+}
+
 func GetSnapshotDetail(c echo.Context) error {
 	snapshotID := c.Param("snapshotId")
 

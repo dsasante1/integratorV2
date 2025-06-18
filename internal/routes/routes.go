@@ -44,7 +44,7 @@ func SetupRoutes(api *echo.Group) {
 	collections.GET("/snapshot/compare/:id", handlers.CompareSnapShots)
 
 
-
+	collections.GET("/:collectionId/snapshot-id", handlers.GetSnapshotID)
 	collections.GET("/:collectionId/changes/summary/:oldSnapshot/:newSnapshot", handlers.GetChangeSummary)
 	
 	// List changes with filtering

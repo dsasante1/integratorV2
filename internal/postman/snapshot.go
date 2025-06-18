@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 	"errors"
+	"integratorV2/utils"
+
 )
 
 var ErrIdenticalSnapshotFound = errors.New("snapshot with identical content already exists")
@@ -244,14 +246,24 @@ func createCanonicalJSON(obj interface{}) string {
 func createSnapshot(collectionID string, content json.RawMessage) (int64, error) {
 	
 	contentHash, err := generateSemanticHash(content)
-	if err != nil {
+
+		if err != nil {
 		slog.Warn("Failed to generate semantic hash, falling back to simple hash", "error", err)
 		contentHash, err = generateContentHash(content)
+
 		if err != nil {
 			return 0, fmt.Errorf("failed to generate content hash: %w", err)
 		}
 	}
 
+	generatedSnapshotID, err := utils.GenerateRandomAlphaNumeric(6)
+
+	if err != nil {
+		slog.Warn("Failed to generate snapshot ID", "error", err)
+		return 0, fmt.Errorf("failed to generate snapshot ID: %w", err)
+	}
+
+	formatGeneratedSnapshotID := "s-" + generatedSnapshotID
 	
 	var existingID int64
 	err = db.DB.QueryRow(`
@@ -271,12 +283,13 @@ func createSnapshot(collectionID string, content json.RawMessage) (int64, error)
 	
 	var snapshotID int64
 	err = db.DB.QueryRow(`
-		INSERT INTO snapshots (collection_id, content, hash)
-		VALUES ($1, $2, $3)
+		INSERT INTO snapshots (collection_id, content, hash, snapshot_id)
+		VALUES ($1, $2, $3, $4)
 		RETURNING id
-	`, collectionID, content, contentHash).Scan(&snapshotID)
+	`, collectionID, content, contentHash, formatGeneratedSnapshotID).Scan(&snapshotID)
 	
 	if err != nil {
+		slog.Warn("creating snapshot failed", "error", err)
 		return 0, fmt.Errorf("error creating snapshot: %v", err)
 	}
 

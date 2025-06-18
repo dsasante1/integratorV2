@@ -8,6 +8,23 @@ import (
 	"time"
 )
 
+func GetSnapshotIDs(collectionID string) ([]int, error) {
+	var snapshotIDs []int
+	
+	err := DB.Select(&snapshotIDs, `
+		SELECT s.id 
+		FROM snapshots s 
+		WHERE s.collection_id = $1 
+		ORDER BY s.created_at DESC
+	`, collectionID)
+
+	if err != nil {
+		slog.Error("failed to fetch snapshot IDs", "error", err)
+		return nil, err
+	}
+
+	return snapshotIDs, nil
+}
 
 func GetCollectionSnapshots(collectionID string, offset int, pageSize int, page int) (map[string]interface{}, error){
 	var snapshots []struct {
