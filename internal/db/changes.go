@@ -4,10 +4,12 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"regexp"
-	"strings"
-	"time"
 	"log/slog"
+	"regexp"
+	"sort"
+	"strings"
+	"sync"
+	"time"
 )
 
  
@@ -101,6 +103,56 @@ type DiffSummary struct {
 // 	Hash         string           `json:"hash"`
 // 	SnapshotID   *int64           `json:"snapshot_id"`
 // }
+
+type DiffRequest struct {
+	CollectionID string `param:"collectionId"`
+	SnapshotID   string `param:"snapshotId"`
+	// Query parameters
+	Search     string `query:"search"`
+	FilterType string `query:"filter_type"` // all, added, deleted, modified
+	GroupBy    string `query:"group_by"`    // none, endpoint, type
+	Page       int    `query:"page"`
+	PageSize   int    `query:"page_size"`
+	SortBy     string `query:"sort_by"`     // endpoint, type, path
+	SortOrder  string `query:"sort_order"`  // asc, desc
+}
+
+// Enhanced response with pagination
+type PaginatedDiffResponse struct {
+	DiffResponse
+	Pagination PaginationInfo `json:"pagination"`
+	Groups     []GroupInfo    `json:"groups,omitempty"`
+}
+
+type PaginationInfo struct {
+	Page         int `json:"page"`
+	PageSize     int `json:"page_size"`
+	TotalItems   int `json:"total_items"`
+	TotalPages   int `json:"total_pages"`
+	HasMore      bool `json:"has_more"`
+}
+
+type GroupInfo struct {
+	Name       string       `json:"name"`
+	Count      int          `json:"count"`
+	Changes    []DiffDetail `json:"changes"`
+	Expanded   bool         `json:"expanded"` // Frontend can use this for UI state
+}
+
+// Cache for diff results
+type DiffCache struct {
+	mu    sync.RWMutex
+	cache map[string]*CachedDiff
+}
+
+type CachedDiff struct {
+	Response  DiffResponse
+	Timestamp int64
+}
+
+var diffCache = &DiffCache{
+	cache: make(map[string]*CachedDiff),
+}
 
 
 func GetCollectionChangeSummary(collectionID string) (*ChangeSummary, error) {
@@ -948,4 +1000,294 @@ func extractValueByPath(data json.RawMessage, path string, skipIfMissing bool) (
 	}
 
 	return current, nil
+}
+
+
+func GetFilteredSnapshotDiff(collectionID string, snapshotID int64, req DiffRequest) (PaginatedDiffResponse, error) {
+	cacheKey := fmt.Sprintf("%s:%d", collectionID, snapshotID)
+	
+	diffCache.mu.RLock()
+	cached, exists := diffCache.cache[cacheKey]
+	diffCache.mu.RUnlock()
+	
+	var baseResponse DiffResponse
+	
+	if exists && (time.Now().Unix()-cached.Timestamp) < 300 { // 5 minute cache
+		baseResponse = cached.Response
+	} else {
+		var err error
+		baseResponse, err = GetSnapshotDiff(collectionID, snapshotID)
+		if err != nil {
+			return PaginatedDiffResponse{}, err
+		}
+		
+
+		diffCache.mu.Lock()
+		diffCache.cache[cacheKey] = &CachedDiff{
+			Response:  baseResponse,
+			Timestamp: time.Now().Unix(),
+		}
+		diffCache.mu.Unlock()
+	}
+
+	// Apply filters
+	filteredChanges := filterChanges(baseResponse.Changes, req)
+	
+	// Sort changes
+	sortChanges(filteredChanges, req.SortBy, req.SortOrder)
+	
+	// Apply grouping if requested
+	var groups []GroupInfo
+	var paginatedChanges []DiffDetail
+	totalItems := len(filteredChanges)
+	
+	if req.GroupBy != "none" && req.GroupBy != "" {
+		groups = groupChanges(filteredChanges, req.GroupBy)
+		for _, group := range groups {
+			paginatedChanges = append(paginatedChanges, group.Changes...)
+		}
+	} else {
+		paginatedChanges = filteredChanges
+	}
+	
+	startIdx := (req.Page - 1) * req.PageSize
+	endIdx := startIdx + req.PageSize
+	
+	if startIdx >= len(paginatedChanges) {
+		paginatedChanges = []DiffDetail{}
+	} else if endIdx > len(paginatedChanges) {
+		paginatedChanges = paginatedChanges[startIdx:]
+	} else {
+		paginatedChanges = paginatedChanges[startIdx:endIdx]
+	}
+	
+	totalPages := (totalItems + req.PageSize - 1) / req.PageSize
+	
+	filteredSummary := calculateFilteredSummary(filteredChanges)
+	
+	return PaginatedDiffResponse{
+		DiffResponse: DiffResponse{
+			OldSnapshotID: baseResponse.OldSnapshotID,
+			NewSnapshotID: baseResponse.NewSnapshotID,
+			CollectionID:  baseResponse.CollectionID,
+			Changes:       paginatedChanges,
+			Summary:       filteredSummary,
+		},
+		Pagination: PaginationInfo{
+			Page:       req.Page,
+			PageSize:   req.PageSize,
+			TotalItems: totalItems,
+			TotalPages: totalPages,
+			HasMore:    req.Page < totalPages,
+		},
+		Groups: groups,
+	}, nil
+}
+
+// filterChanges applies search and type filters
+func filterChanges(changes []DiffDetail, req DiffRequest) []DiffDetail {
+	if req.Search == "" && req.FilterType == "all" {
+		return changes
+	}
+	
+	filtered := make([]DiffDetail, 0, len(changes))
+	searchLower := strings.ToLower(req.Search)
+	
+	for _, change := range changes {
+		// Apply type filter
+		if req.FilterType != "all" && change.ChangeType != req.FilterType {
+			continue
+		}
+		
+		// Apply search filter
+		if searchLower != "" {
+			matched := false
+			
+			// Search in multiple fields
+			if strings.Contains(strings.ToLower(change.HumanPath), searchLower) ||
+			   strings.Contains(strings.ToLower(change.Path), searchLower) ||
+			   (change.EndpointName != "" && strings.Contains(strings.ToLower(change.EndpointName), searchLower)) ||
+			   strings.Contains(strings.ToLower(change.ResourceType), searchLower) {
+				matched = true
+			}
+			
+			// Search in values for modified changes
+			if !matched && change.ChangeType == "modified" {
+				oldValueStr := fmt.Sprintf("%v", change.OldValue)
+				newValueStr := fmt.Sprintf("%v", change.NewValue)
+				if strings.Contains(strings.ToLower(oldValueStr), searchLower) ||
+				   strings.Contains(strings.ToLower(newValueStr), searchLower) {
+					matched = true
+				}
+			}
+			
+			if !matched {
+				continue
+			}
+		}
+		
+		filtered = append(filtered, change)
+	}
+	
+	return filtered
+}
+
+// sortChanges sorts the changes based on the sort criteria
+func sortChanges(changes []DiffDetail, sortBy, sortOrder string) {
+	if sortBy == "" {
+		return
+	}
+	
+	sort.Slice(changes, func(i, j int) bool {
+		var less bool
+		
+		switch sortBy {
+		case "endpoint":
+			less = changes[i].EndpointName < changes[j].EndpointName
+		case "type":
+			less = changes[i].ChangeType < changes[j].ChangeType
+		case "path":
+			less = changes[i].HumanPath < changes[j].HumanPath
+		default:
+			// Default to endpoint name
+			less = changes[i].EndpointName < changes[j].EndpointName
+		}
+		
+		if sortOrder == "desc" {
+			return !less
+		}
+		return less
+	})
+}
+
+// groupChanges groups changes by the specified criteria
+func groupChanges(changes []DiffDetail, groupBy string) []GroupInfo {
+	groupMap := make(map[string][]DiffDetail)
+	
+	for _, change := range changes {
+		var key string
+		
+		switch groupBy {
+		case "endpoint":
+			key = change.EndpointName
+			if key == "" {
+				key = "Collection Level"
+			}
+		case "type":
+			key = strings.Title(change.ChangeType)
+		default:
+			key = "All Changes"
+		}
+		
+		groupMap[key] = append(groupMap[key], change)
+	}
+	
+	// Convert map to slice
+	groups := make([]GroupInfo, 0, len(groupMap))
+	for name, changes := range groupMap {
+		groups = append(groups, GroupInfo{
+			Name:     name,
+			Count:    len(changes),
+			Changes:  changes,
+			Expanded: true, // Default to expanded, frontend can manage this
+		})
+	}
+	
+	// Sort groups by name
+	sort.Slice(groups, func(i, j int) bool {
+		return groups[i].Name < groups[j].Name
+	})
+	
+	return groups
+}
+
+// calculateFilteredSummary recalculates summary for filtered results
+func calculateFilteredSummary(changes []DiffDetail) DiffSummary {
+	changesByType := make(map[string]int)
+	endpointSet := make(map[string]bool)
+	
+	for _, change := range changes {
+		changesByType[change.ChangeType]++
+		if change.EndpointName != "" {
+			endpointSet[change.EndpointName] = true
+		}
+	}
+	
+	affectedEndpoints := make([]string, 0, len(endpointSet))
+	for endpoint := range endpointSet {
+		affectedEndpoints = append(affectedEndpoints, endpoint)
+	}
+	
+	// Sort endpoints for consistency
+	sort.Strings(affectedEndpoints)
+	
+	return DiffSummary{
+		TotalChanges:      len(changes),
+		ChangesByType:     changesByType,
+		AffectedEndpoints: affectedEndpoints,
+	}
+}
+
+
+
+func GetChangeDetail(collectionID string, changeID int64) (DiffDetail, error) {
+	var change ChangeDetail
+	
+	query := `
+		SELECT id, collection_id, old_snapshot_id, new_snapshot_id, 
+		       change_type, path, modification, created_at
+		FROM changes
+		WHERE collection_id = $1 AND id = $2`
+	
+	err := DB.Get(&change, query, collectionID, changeID)
+	if err != nil {
+		return DiffDetail{}, err
+	}
+	
+	// Enhance the change detail
+	enhanceChangeDetail(&change)
+	
+	// Get the snapshots to extract values
+	oldSnapshot, err := getSnapshot(*change.OldSnapshotID)
+	if err != nil {
+		return DiffDetail{}, err
+	}
+	
+	newSnapshot, err := getSnapshot(change.NewSnapshotID)
+	if err != nil {
+		return DiffDetail{}, err
+	}
+	
+	// Extract values
+	oldValue, _ := extractValueByPath(oldSnapshot.Content, change.Path, change.ChangeType == "added")
+	newValue, _ := extractValueByPath(newSnapshot.Content, change.Path, change.ChangeType == "deleted")
+	
+	return DiffDetail{
+		ChangeDetail: change,
+		OldValue:     oldValue,
+		NewValue:     newValue,
+	}, nil
+}
+
+
+func SearchEndpoints(collectionID, search string) ([]string, error) {
+	query := `
+		SELECT DISTINCT endpoint_name
+		FROM changes
+		WHERE collection_id = $1 
+		  AND endpoint_name IS NOT NULL 
+		  AND endpoint_name != ''
+		  AND ($2 = '' OR LOWER(endpoint_name) LIKE LOWER($2))
+		ORDER BY endpoint_name
+		LIMIT 20`
+	
+	searchPattern := "%" + search + "%"
+	
+	var endpoints []string
+	err := DB.Select(&endpoints, query, collectionID, searchPattern)
+	if err != nil {
+		return nil, err
+	}
+	
+	return endpoints, nil
 }

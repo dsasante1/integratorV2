@@ -12,6 +12,56 @@ import (
 )
 
 
+type DiffRequest struct {
+	CollectionID string `param:"collectionId"`
+	SnapshotID   string `param:"snapshotId"`
+	// Query parameters
+	Search     string `query:"search"`
+	FilterType string `query:"filter_type"` // all, added, deleted, modified
+	GroupBy    string `query:"group_by"`    // none, endpoint, type
+	Page       int    `query:"page"`
+	PageSize   int    `query:"page_size"`
+	SortBy     string `query:"sort_by"`     // endpoint, type, path
+	SortOrder  string `query:"sort_order"`  // asc, desc
+}
+
+type ChangeDetail struct {
+	ID             int64      `json:"id"`
+	CollectionID   string     `json:"collection_id"`
+	OldSnapshotID  *int64     `json:"old_snapshot_id"`
+	NewSnapshotID  int64      `json:"new_snapshot_id"`
+	ChangeType     string     `json:"change_type"`
+	Path           string     `json:"path"`
+	Modification   *string    `json:"modification"`
+	CreatedAt      time.Time  `json:"created_at"`
+	
+	 
+	HumanPath      string     `json:"human_path"`
+	PathSegments   []string   `json:"path_segments"`
+	EndpointName   string     `json:"endpoint_name,omitempty"`
+	ResourceType   string     `json:"resource_type,omitempty"`
+}
+type DiffDetail struct {
+	ChangeDetail
+	OldValue interface{} `json:"old_value"`
+	NewValue interface{} `json:"new_value"`
+}
+
+// DiffSummary provides high-level statistics about the diff
+type DiffSummary struct {
+	TotalChanges     int            `json:"total_changes"`
+	ChangesByType    map[string]int `json:"changes_by_type"`
+	AffectedEndpoints []string      `json:"affected_endpoints"`
+}
+
+type DiffResponse struct {
+	OldSnapshotID int64        `json:"old_snapshot_id"`
+	NewSnapshotID int64        `json:"new_snapshot_id"`
+	CollectionID  string       `json:"collection_id"`
+	Changes       []DiffDetail `json:"changes"`
+	Summary       DiffSummary  `json:"summary"`
+}
+
 func GetCollectionChangeSummary(c echo.Context) error {
 		collectionID := c.Param("collectionId")
 
@@ -347,35 +397,45 @@ func CompareSnapshots(c echo.Context) error {
 
 
 func GetSnapshotDiff(c echo.Context) error {
-	
-	collectionID := c.Param("collectionId")
-	snapshotID := c.Param("snapshotId")
+	var req db.DiffRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request parameters"})
+	}
 
-	if collectionID == "" {
+	if req.CollectionID == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Collection ID is required"})
 	}
 
-	if snapshotID == "" {
+	if req.SnapshotID == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Snapshot ID is required"})
 	}
 
-	validatesnapshotID, err := strconv.ParseInt(snapshotID, 10, 64)
+	validateSnapshotID, err := strconv.ParseInt(req.SnapshotID, 10, 64)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "Invalid snapshot ID")
 	}
 
-
-	
-	result, err := db.GetSnapshotDiff(collectionID, validatesnapshotID)
-
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "fetch snapshot diff failed")
+	// Set defaults
+	if req.PageSize == 0 {
+		req.PageSize = 50 // Default page size
 	}
-	
+	if req.Page == 0 {
+		req.Page = 1
+	}
+	if req.FilterType == "" {
+		req.FilterType = "all"
+	}
+	if req.SortOrder == "" {
+		req.SortOrder = "asc"
+	}
+
+	result, err := db.GetFilteredSnapshotDiff(req.CollectionID, validateSnapshotID, req)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "fetch snapshot diff failed: "+err.Error())
+	}
 
 	return c.JSON(http.StatusOK, result)
 }
-
 
 func GetSnapshotDiffID(c echo.Context) error {
 	collectionID := c.Param("collectionId")
@@ -395,3 +455,41 @@ func GetSnapshotDiffID(c echo.Context) error {
 	return c.JSON(http.StatusOK, snapshotID)
 }
 
+
+func SearchEndpoints(c echo.Context) error {
+	collectionID := c.Param("collectionId")
+	search := c.QueryParam("q")
+	
+	if collectionID == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Collection ID is required"})
+	}
+	
+	endpoints, err := db.SearchEndpoints(collectionID, search)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to search endpoints")
+	}
+	
+	return c.JSON(http.StatusOK, endpoints)
+}
+
+
+func GetChangeDetail(c echo.Context) error {
+	collectionID := c.Param("collectionId")
+	changeID := c.Param("changeId")
+	
+	if collectionID == "" || changeID == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Collection ID and Change ID are required"})
+	}
+	
+	changeIDInt, err := strconv.ParseInt(changeID, 10, 64)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid change ID")
+	}
+	
+	change, err := db.GetChangeDetail(collectionID, changeIDInt)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusNotFound, "Change not found")
+	}
+	
+	return c.JSON(http.StatusOK, change)
+}
