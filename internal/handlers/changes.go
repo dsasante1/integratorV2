@@ -344,3 +344,54 @@ func CompareSnapshots(c echo.Context) error {
 	
 	return c.JSON(http.StatusOK, comparison)
 }
+
+
+func GetSnapshotDiff(c echo.Context) error {
+	
+	collectionID := c.Param("collectionId")
+	snapshotID := c.Param("snapshotId")
+
+	if collectionID == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Collection ID is required"})
+	}
+
+	if snapshotID == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Snapshot ID is required"})
+	}
+
+	validatesnapshotID, err := strconv.ParseInt(snapshotID, 10, 64)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid snapshot ID")
+	}
+
+
+	
+	result, err := db.GetSnapshotDiff(collectionID, validatesnapshotID)
+
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "fetch snapshot diff failed")
+	}
+	
+
+	return c.JSON(http.StatusOK, result)
+}
+
+
+func GetSnapshotDiffID(c echo.Context) error {
+	collectionID := c.Param("collectionId")
+
+	if collectionID == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Collection ID is required"})
+	}
+
+	snapshotID, err := db.GetSnapshotDiffID(collectionID)
+
+	if err != nil {
+		slog.Error("failed to fetch snapshot IDs", "error", err)
+		return c.JSON(http.StatusNotFound,
+		map[string]string{"error": "Snapshot IDs not found"})
+	}
+
+	return c.JSON(http.StatusOK, snapshotID)
+}
+

@@ -63,6 +63,10 @@ func SetupRoutes(api *echo.Group) {
 	
 	// Export changes
 	collections.GET("/:id/changes/export", handlers.ExportChanges)
+
+	//show snapshot diff like github
+	collections.GET("/:collectionId/changes/diff/:snapshotId", handlers.GetSnapshotDiff)
+	collections.GET("/:collectionId/diff/:snapshotId", handlers.GetSnapshotDiffID)
 	
 	// Advanced analysis endpoints
 	collections.GET("/:collectionId/snapshots/:snapshotId/impact-analysis", handlers.GetChangeImpactAnalysis)

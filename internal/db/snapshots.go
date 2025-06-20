@@ -8,6 +8,12 @@ import (
 	"time"
 )
 
+
+type DiffSnapshotID struct {
+	ID        int       `db:"id"`
+	CreatedAt time.Time `db:"created_at"`
+}
+
 func GetSnapshotIDs(collectionID string) ([]int, error) {
 	var snapshotIDs []int
 	
@@ -426,4 +432,23 @@ func DeleteSnapshotChanges(snapshotID int64) error {
 	slog.Info("Successfully deleted snapshot and related changes\n", "snapshotID", "snapshotID")
 
 	return nil
+}
+
+
+func GetSnapshotDiffID(collectionID string) ([]DiffSnapshotID, error) {
+	var snapshots []DiffSnapshotID
+	
+	err := DB.Select(&snapshots, `
+		SELECT s.id, s.created_at 
+		FROM snapshots s 
+		WHERE s.collection_id = $1 
+		ORDER BY s.created_at DESC
+	`, collectionID)
+
+	if err != nil {
+		slog.Error("failed to fetch snapshot IDs", "error", err)
+		return nil, err
+	}
+
+	return snapshots, nil
 }

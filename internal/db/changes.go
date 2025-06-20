@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
-	// "log/slog"
+	"log/slog"
 )
 
  
@@ -65,6 +65,42 @@ type ChangeNode struct {
 	Children     []*ChangeNode          `json:"children,omitempty"`
 	Change       *ChangeDetail          `json:"change,omitempty"`
 }
+
+
+
+
+// DiffResponse represents the complete diff between two snapshots
+type DiffResponse struct {
+	OldSnapshotID int64        `json:"old_snapshot_id"`
+	NewSnapshotID int64        `json:"new_snapshot_id"`
+	CollectionID  string       `json:"collection_id"`
+	Changes       []DiffDetail `json:"changes"`
+	Summary       DiffSummary  `json:"summary"`
+}
+
+// DiffDetail represents a single change with extracted values
+type DiffDetail struct {
+	ChangeDetail
+	OldValue interface{} `json:"old_value"`
+	NewValue interface{} `json:"new_value"`
+}
+
+// DiffSummary provides high-level statistics about the diff
+type DiffSummary struct {
+	TotalChanges     int            `json:"total_changes"`
+	ChangesByType    map[string]int `json:"changes_by_type"`
+	AffectedEndpoints []string      `json:"affected_endpoints"`
+}
+
+// Snapshot represents a stored snapshot
+// type Snapshot struct {
+// 	ID           int64            `json:"id"`
+// 	CollectionID string           `json:"collection_id"`
+// 	SnapshotTime time.Time        `json:"snapshot_time"`
+// 	Content      json.RawMessage  `json:"content"`
+// 	Hash         string           `json:"hash"`
+// 	SnapshotID   *int64           `json:"snapshot_id"`
+// }
 
 
 func GetCollectionChangeSummary(collectionID string) (*ChangeSummary, error) {
@@ -669,4 +705,247 @@ func calculateChangeCounts(node *ChangeNode) int {
 	
 	node.ChangeCount = count
 	return count
+}
+
+
+func GetSnapshotDiff(collectionID string, snapshotID int64) (DiffResponse, error) {
+
+	var oldSnapshotID sql.NullInt64
+	
+	err := DB.Get(&oldSnapshotID, `
+		SELECT old_snapshot_id
+		FROM changes
+		WHERE new_snapshot_id = $1 AND collection_id = $2
+		LIMIT 1`,
+		snapshotID, collectionID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return DiffResponse{}, fmt.Errorf("no changes found for snapshot %d", snapshotID)
+		}
+		slog.Error("error fetching old snapshot ID", "error", err)
+		return DiffResponse{}, fmt.Errorf("failed to fetch snapshot changes: %w", err)
+	}
+
+	if !oldSnapshotID.Valid {
+		return DiffResponse{
+			OldSnapshotID: 0,
+			NewSnapshotID: snapshotID,
+			CollectionID:  collectionID,
+			Changes:       []DiffDetail{},
+			Summary: DiffSummary{
+				TotalChanges:      0,
+				ChangesByType:     map[string]int{},
+				AffectedEndpoints: []string{},
+			},
+		}, nil
+	}
+
+
+	changes, err := getChangesBetweenSnapshots(oldSnapshotID.Int64, snapshotID, collectionID)
+	if err != nil {
+		return DiffResponse{}, fmt.Errorf("failed to get changes: %w", err)
+	}
+
+	oldSnapshot, err := getSnapshot(oldSnapshotID.Int64)
+	if err != nil {
+		return DiffResponse{}, fmt.Errorf("failed to get old snapshot: %w", err)
+	}
+
+	newSnapshot, err := getSnapshot(snapshotID)
+	if err != nil {
+		return DiffResponse{}, fmt.Errorf("failed to get new snapshot: %w", err)
+	}
+
+	diffDetails := make([]DiffDetail, 0, len(changes))
+	changesByType := make(map[string]int)
+	endpointSet := make(map[string]bool)
+
+	for _, change := range changes {
+
+		enhanceChangeDetail(&change)
+
+		oldValue, err := extractValueByPath(oldSnapshot.Content, change.Path, change.ChangeType == "added")
+		if err != nil && change.ChangeType != "added" {
+			slog.Warn("failed to extract old value", "path", change.Path, "error", err)
+		}
+
+		newValue, err := extractValueByPath(newSnapshot.Content, change.Path, change.ChangeType == "deleted")
+		if err != nil && change.ChangeType != "deleted" {
+			slog.Warn("failed to extract new value", "path", change.Path, "error", err)
+		}
+
+		diffDetail := DiffDetail{
+			ChangeDetail: change,
+			OldValue:     oldValue,
+			NewValue:     newValue,
+		}
+
+		diffDetails = append(diffDetails, diffDetail)
+
+		changesByType[change.ChangeType]++
+		if change.EndpointName != "" {
+			endpointSet[change.EndpointName] = true
+		}
+	}
+
+	affectedEndpoints := make([]string, 0, len(endpointSet))
+	for endpoint := range endpointSet {
+		affectedEndpoints = append(affectedEndpoints, endpoint)
+	}
+
+	return DiffResponse{
+		OldSnapshotID: oldSnapshotID.Int64,
+		NewSnapshotID: snapshotID,
+		CollectionID:  collectionID,
+		Changes:       diffDetails,
+		Summary: DiffSummary{
+			TotalChanges:      len(diffDetails),
+			ChangesByType:     changesByType,
+			AffectedEndpoints: affectedEndpoints,
+		},
+	}, nil
+}
+
+func getChangesBetweenSnapshots(oldSnapshotID, newSnapshotID int64, collectionID string) ([]ChangeDetail, error) {
+	query := `
+		SELECT 
+			id, collection_id, old_snapshot_id, new_snapshot_id,
+			change_type, path, modification, created_at
+		FROM changes
+		WHERE old_snapshot_id = $1 AND new_snapshot_id = $2 AND collection_id = $3
+		ORDER BY id ASC`
+
+	rows, err := DB.Query(query, oldSnapshotID, newSnapshotID, collectionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query changes: %w", err)
+	}
+	defer rows.Close()
+
+	var changes []ChangeDetail
+	for rows.Next() {
+		var change ChangeDetail
+		var oldSnapshotID sql.NullInt64
+
+		err := rows.Scan(
+			&change.ID,
+			&change.CollectionID,
+			&oldSnapshotID,
+			&change.NewSnapshotID,
+			&change.ChangeType,
+			&change.Path,
+			&change.Modification,
+			&change.CreatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan change row: %w", err)
+		}
+
+		if oldSnapshotID.Valid {
+			change.OldSnapshotID = &oldSnapshotID.Int64
+		}
+
+		changes = append(changes, change)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating change rows: %w", err)
+	}
+
+	return changes, nil
+}
+
+func getSnapshot(snapshotID int64) (*Snapshot, error) {
+	var snapshot Snapshot
+	
+	query := `
+		SELECT id, collection_id, snapshot_time, content, hash, snapshot_id
+		FROM snapshots
+		WHERE id = $1`
+
+	err := DB.Get(&snapshot, query, snapshotID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("snapshot %d not found", snapshotID)
+		}
+		return nil, fmt.Errorf("failed to get snapshot: %w", err)
+	}
+
+	return &snapshot, nil
+}
+
+func extractValueByPath(data json.RawMessage, path string, skipIfMissing bool) (interface{}, error) {
+
+	var jsonData interface{}
+	if err := json.Unmarshal(data, &jsonData); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
+	}
+
+	// Split path into segments
+	segments := parsePathSegments(path)
+	current := jsonData
+
+	// Navigate through the JSON structure
+	for i, segment := range segments {
+		if current == nil {
+			if skipIfMissing {
+				return nil, nil
+			}
+			return nil, fmt.Errorf("null value encountered at segment %d (%s)", i, segment)
+		}
+
+		switch v := current.(type) {
+		case map[string]interface{}:
+			if strings.HasPrefix(segment, "[") && strings.HasSuffix(segment, "]") {
+				// This is an array index, but we're in an object - path error
+				if skipIfMissing {
+					return nil, nil
+				}
+				return nil, fmt.Errorf("expected object key but got array index %s", segment)
+			}
+			
+			val, exists := v[segment]
+			if !exists {
+				if skipIfMissing {
+					return nil, nil
+				}
+				return nil, fmt.Errorf("key '%s' not found in object", segment)
+			}
+			current = val
+
+		case []interface{}:
+			if !strings.HasPrefix(segment, "[") || !strings.HasSuffix(segment, "]") {
+				if skipIfMissing {
+					return nil, nil
+				}
+				return nil, fmt.Errorf("expected array index but got object key %s", segment)
+			}
+			
+			// Extract index from [n] format
+			indexStr := segment[1 : len(segment)-1]
+			index := 0
+			if _, err := fmt.Sscanf(indexStr, "%d", &index); err != nil {
+				if skipIfMissing {
+					return nil, nil
+				}
+				return nil, fmt.Errorf("invalid array index %s", segment)
+			}
+			
+			if index < 0 || index >= len(v) {
+				if skipIfMissing {
+					return nil, nil
+				}
+				return nil, fmt.Errorf("array index %d out of bounds (length: %d)", index, len(v))
+			}
+			current = v[index]
+
+		default:
+			// We've reached a primitive value but still have more segments
+			if skipIfMissing {
+				return nil, nil
+			}
+			return nil, fmt.Errorf("cannot navigate further into primitive value at segment %s", segment)
+		}
+	}
+
+	return current, nil
 }
