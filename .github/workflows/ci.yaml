@@ -1,0 +1,64 @@
+name: Deploy Go Backend to VPS
+
+on:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  deploy:
+    runs-on: integrator_backend
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+    
+    - name: Get dependencies
+      run: go mod download
+    
+    - name: Build application
+      run: |
+        CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o app .
+    
+    - name: Stop existing application
+      run: |
+        sudo pkill -f "./app" || true
+        sleep 2
+    
+    - name: Deploy application
+      run: |
+        # Create app directory if it doesn't exist
+        sudo mkdir -p /opt/myapp
+        
+        # Copy binary to deployment directory
+        sudo cp app /opt/myapp/
+        
+        # Copy any static files or configs if needed
+        # sudo cp -r static/ /opt/myapp/ || true
+        # sudo cp config.yml /opt/myapp/ || true
+        
+        # Set permissions
+        sudo chmod +x /opt/myapp/app
+    
+    - name: Start application
+      run: |
+        cd /opt/myapp
+        nohup sudo ./app > app.log 2>&1 &
+        sleep 3
+        
+    - name: Verify deployment
+      run: |
+        # Check if process is running
+        if pgrep -f "./app" > /dev/null; then
+          echo "✅ Application is running"
+          # Optional: Health check
+          # curl -f http://localhost:8080/integrator/api/v1/health-check || exit 1
+        else
+          echo "❌ Application failed to start"
+          exit 1
+        fi
