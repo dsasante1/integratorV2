@@ -327,7 +327,7 @@ func processSnapshotChanges(collectionID string, newSnapshotID int64) error {
 	
 	hasChanges, err := quickChangeCheck(collectionID, newSnapshotID)
 	if err != nil {
-		return fmt.Errorf("quick change check failed: %w", err)
+		return fmt.Errorf("quick change detection check failed: %w", err)
 	}
 
 	if !hasChanges {
@@ -337,7 +337,7 @@ func processSnapshotChanges(collectionID string, newSnapshotID int64) error {
 		return nil
 	}
 
-	
+	//TODO refactor to get the previous snapshot content as well
 	oldSnapshot, err := getPreviousSnapshot(collectionID, newSnapshotID)
 	if err != nil {
 		return fmt.Errorf("failed to get previous snapshot: %w", err)
@@ -356,7 +356,7 @@ func processSnapshotChanges(collectionID string, newSnapshotID int64) error {
 		return fmt.Errorf("failed to get new snapshot content: %w", err)
 	}
 
-	
+	//TODO refactor to prevent multiple calls to the db to fetch old snapshot content/data
 	oldContent, err := getSnapshotContent(oldSnapshot.ID)
 	if err != nil {
 		return fmt.Errorf("failed to get old snapshot content: %w", err)

@@ -149,7 +149,7 @@ func ComparePostmanSnapshots(old, new json.RawMessage, opts *CompareOptions) ([]
 		opts = DefaultPostmanOptions()
 	}
 
-	var oldData, newData interface{}
+	var oldData, newData any
 
 	if err := json.Unmarshal(old, &oldData); err != nil {
 		return nil, fmt.Errorf("unmarshal old snapshot: %w", err)
@@ -159,16 +159,176 @@ func ComparePostmanSnapshots(old, new json.RawMessage, opts *CompareOptions) ([]
 	}
 
 	ctx := &compareContext{
-		changes:    make([]Change, 0),
-		opts:       opts,
-		pathIndex:  make(map[string]bool),
+		changes:     make([]Change, 0),
+		opts:        opts,
+		pathIndex:   make(map[string]bool),
 		changeCount: 0,
 	}
 
+	// First check for structural changes at ANY level
+	if hasStructuralChanges(ctx, "", oldData, newData) {
+		// If structural changes exist, process ONLY structural changes
+		processStructuralChanges(ctx, "", oldData, newData, 0)
+		return ctx.changes, nil
+	}
+
+	// No structural changes anywhere, proceed with content comparison
 	compareRecursive(ctx, "", oldData, newData, 0)
 	return ctx.changes, nil
 }
 
+// processStructuralChanges should ONLY handle structural differences
+func processStructuralChanges(ctx *compareContext, path string, old, new interface{}, depth int) {
+	if ctx.opts.MaxChanges > 0 && ctx.changeCount >= ctx.opts.MaxChanges {
+		return
+	}
+	
+	if ctx.opts.MaxDepth > 0 && depth > ctx.opts.MaxDepth {
+		return
+	}
+	
+	// Handle nil cases
+	if old == nil && new == nil {
+		return
+	}
+	if old == nil {
+		addChange(ctx, "added", path, new)
+		return
+	}
+	if new == nil {
+		addChange(ctx, "deleted", path, old)
+		return
+	}
+	
+	// Check if both are objects
+	oldObj, oldIsObj := old.(map[string]interface{})
+	newObj, newIsObj := new.(map[string]interface{})
+	
+	if !oldIsObj || !newIsObj {
+		// Not objects - no structural changes to report here
+		// Do NOT call compareRecursive or report modifications
+		return
+	}
+	
+	// Process added fields
+	for key, newVal := range newObj {
+		newPath := joinPath(path, key)
+		if shouldIgnorePath(newPath, ctx.opts.IgnorePaths) {
+			continue
+		}
+		if _, exists := oldObj[key]; !exists {
+			// Field was added - add the entire content
+			addChange(ctx, "added", newPath, newVal)
+		}
+	}
+	
+	// Process deleted fields
+	for key, oldVal := range oldObj {
+		newPath := joinPath(path, key)
+		if shouldIgnorePath(newPath, ctx.opts.IgnorePaths) {
+			continue
+		}
+		if _, exists := newObj[key]; !exists {
+			// Field was deleted - add the entire content that was deleted
+			addChange(ctx, "deleted", newPath, oldVal)
+		}
+	}
+	
+	// Recursively check for structural changes in nested objects
+	// Only process objects that exist in both old and new
+	for key := range oldObj {
+		if newVal, exists := newObj[key]; exists {
+			newPath := joinPath(path, key)
+			if shouldIgnorePath(newPath, ctx.opts.IgnorePaths) {
+				continue
+			}
+			// Continue looking for structural changes only
+			processStructuralChanges(ctx, newPath, oldObj[key], newVal, depth+1)
+		}
+	}
+	
+	// Also check arrays for structural changes
+	oldArr, oldIsArr := old.([]interface{})
+	newArr, newIsArr := new.([]interface{})
+	
+	if oldIsArr && newIsArr {
+		// For arrays, structural changes are additions/deletions of elements
+		if len(oldArr) != len(newArr) {
+			// Different lengths - report additions or deletions
+			maxLen := len(oldArr)
+			if len(newArr) > maxLen {
+				maxLen = len(newArr)
+			}
+			
+			for i := 0; i < maxLen; i++ {
+				indexPath := fmt.Sprintf("%s[%d]", path, i)
+				if i >= len(oldArr) {
+					// Element added
+					addChange(ctx, "added", indexPath, newArr[i])
+				} else if i >= len(newArr) {
+					// Element deleted
+					addChange(ctx, "deleted", indexPath, oldArr[i])
+				} else {
+					// Element exists in both - check for structural changes within it
+					processStructuralChanges(ctx, indexPath, oldArr[i], newArr[i], depth+1)
+				}
+			}
+		} else {
+			// Same length - check each element for structural changes
+			for i := 0; i < len(oldArr); i++ {
+				indexPath := fmt.Sprintf("%s[%d]", path, i)
+				processStructuralChanges(ctx, indexPath, oldArr[i], newArr[i], depth+1)
+			}
+		}
+	}
+}
+
+// hasStructuralChanges checks if there are any structural differences (field additions/deletions)
+func hasStructuralChanges(ctx *compareContext, path string, old, new interface{}) bool {
+	// Check if both are objects
+	oldObj, oldIsObj := old.(map[string]interface{})
+	newObj, newIsObj := new.(map[string]interface{})
+	
+	if !oldIsObj || !newIsObj {
+		// If types differ or not objects, let compareRecursive handle it
+		return false
+	}
+	
+	// Check for added fields (in new but not in old)
+	for key := range newObj {
+		if shouldIgnorePath(joinPath(path, key), ctx.opts.IgnorePaths) {
+			continue
+		}
+		if _, exists := oldObj[key]; !exists {
+			return true
+		}
+	}
+	
+	// Check for deleted fields (in old but not in new)
+	for key := range oldObj {
+		if shouldIgnorePath(joinPath(path, key), ctx.opts.IgnorePaths) {
+			continue
+		}
+		if _, exists := newObj[key]; !exists {
+			return true
+		}
+	}
+	
+	// Recursively check nested objects for structural changes
+	for key := range oldObj {
+		if newVal, exists := newObj[key]; exists {
+			newPath := joinPath(path, key)
+			if shouldIgnorePath(newPath, ctx.opts.IgnorePaths) {
+				continue
+			}
+			if hasStructuralChanges(ctx, newPath, oldObj[key], newVal) {
+				return true
+			}
+		}
+	}
+	
+	return false
+}
 
 func compareRecursive(ctx *compareContext, path string, old, new interface{}, depth int) {
 
@@ -515,4 +675,273 @@ func deepEqual(a, b interface{}) bool {
 
 func jsonEqual(a, b interface{}) bool {
 	return deepEqual(a, b)
+}
+
+
+
+
+// StructuralChange represents a structural difference between JSONs
+type StructuralChange struct {
+	Type string // "added_field" or "deleted_field"
+	Path string
+	Field string // The field name that was added/deleted
+}
+
+// CompareStructure performs a shallow structural comparison to detect field additions/deletions
+func CompareStructure(ctx *compareContext, path string, old, new interface{}) []StructuralChange {
+	var structural []StructuralChange
+	
+	// Only compare structure for objects
+	oldObj, oldIsObj := old.(map[string]interface{})
+	newObj, newIsObj := new.(map[string]interface{})
+	
+	if !oldIsObj || !newIsObj {
+		return structural
+	}
+	
+	// Check for added fields (in new but not in old)
+	for key := range newObj {
+		if _, exists := oldObj[key]; !exists {
+			structural = append(structural, StructuralChange{
+				Type:  "added_field",
+				Path:  path,
+				Field: key,
+			})
+		}
+	}
+	
+	// Check for deleted fields (in old but not in new)
+	for key := range oldObj {
+		if _, exists := newObj[key]; !exists {
+			structural = append(structural, StructuralChange{
+				Type:  "deleted_field",
+				Path:  path,
+				Field: key,
+			})
+		}
+	}
+	
+	return structural
+}
+
+// ComparePostmanSnapshotsWithStructure performs two-phase comparison
+func ComparePostmanSnapshotsWithStructure(old, new json.RawMessage, opts *CompareOptions) ([]Change, []StructuralChange, error) {
+	if opts == nil {
+		opts = DefaultPostmanOptions()
+	}
+
+	var oldData, newData any
+
+	if err := json.Unmarshal(old, &oldData); err != nil {
+		return nil, nil, fmt.Errorf("unmarshal old snapshot: %w", err)
+	}
+	if err := json.Unmarshal(new, &newData); err != nil {
+		return nil, nil, fmt.Errorf("unmarshal new snapshot: %w", err)
+	}
+
+	ctx := &compareContext{
+		changes:     make([]Change, 0),
+		opts:        opts,
+		pathIndex:   make(map[string]bool),
+		changeCount: 0,
+	}
+
+	// Phase 1: Structural comparison
+	structural := compareStructureRecursive(ctx, "", oldData, newData, 0)
+	
+	// Phase 2: Content comparison (your existing logic)
+	compareRecursive(ctx, "", oldData, newData, 0)
+	
+	return ctx.changes, structural, nil
+}
+
+// compareStructureRecursive recursively compares structure throughout the JSON tree
+func compareStructureRecursive(ctx *compareContext, path string, old, new interface{}, depth int) []StructuralChange {
+	var allStructural []StructuralChange
+	
+	if shouldIgnorePath(path, ctx.opts.IgnorePaths) {
+		return allStructural
+	}
+	
+	// Get structural changes at this level
+	structural := CompareStructure(ctx, path, old, new)
+	allStructural = append(allStructural, structural...)
+	
+	// Recursively check nested objects
+	oldObj, oldIsObj := old.(map[string]interface{})
+	newObj, newIsObj := new.(map[string]interface{})
+	
+	if oldIsObj && newIsObj {
+		// For fields that exist in both, recursively check their structure
+		for key := range oldObj {
+			if newVal, exists := newObj[key]; exists {
+				newPath := joinPath(path, key)
+				nested := compareStructureRecursive(ctx, newPath, oldObj[key], newVal, depth+1)
+				allStructural = append(allStructural, nested...)
+			}
+		}
+	}
+	
+	// Handle arrays
+	oldArr, oldIsArr := old.([]interface{})
+	newArr, newIsArr := new.([]interface{})
+	
+	if oldIsArr && newIsArr {
+		maxLen := len(oldArr)
+		if len(newArr) > maxLen {
+			maxLen = len(newArr)
+		}
+		
+		for i := 0; i < maxLen && i < len(oldArr) && i < len(newArr); i++ {
+			indexPath := fmt.Sprintf("%s[%d]", path, i)
+			nested := compareStructureRecursive(ctx, indexPath, oldArr[i], newArr[i], depth+1)
+			allStructural = append(allStructural, nested...)
+		}
+	}
+	
+	return allStructural
+}
+
+// Enhanced compareRecursive that can skip structural differences if needed
+func compareRecursiveEnhanced(ctx *compareContext, path string, old, new interface{}, depth int, skipStructural bool) {
+	if ctx.opts.MaxChanges > 0 && ctx.changeCount >= ctx.opts.MaxChanges {
+		return
+	}
+
+	if ctx.opts.MaxDepth > 0 && depth > ctx.opts.MaxDepth {
+		if !deepEqual(old, new) {
+			addChange(ctx, "modified", path, new)
+		}
+		return
+	}
+
+	if shouldIgnorePath(path, ctx.opts.IgnorePaths) {
+		return
+	}
+
+	if old == nil && new == nil {
+		return
+	}
+	if old == nil {
+		if !skipStructural {
+			addChange(ctx, "added", path, new)
+		}
+		return
+	}
+	if new == nil {
+		if !skipStructural {
+			addChange(ctx, "deleted", path, old)
+		}
+		return
+	}
+
+	oldType := getJSONType(old)
+	newType := getJSONType(new)
+	if oldType != newType {
+		addChange(ctx, "modified", path, new)
+		return
+	}
+
+	switch oldVal := old.(type) {
+	case map[string]interface{}:
+		compareObjectsEnhanced(ctx, path, oldVal, new.(map[string]interface{}), depth, skipStructural)
+	case []interface{}:
+		compareArrays(ctx, path, oldVal, new.([]interface{}), depth)
+	default:
+		if !deepEqual(old, new) {
+			addChange(ctx, "modified", path, new)
+		}
+	}
+}
+
+// Enhanced compareObjects that can handle structural skip
+func compareObjectsEnhanced(ctx *compareContext, path string, old, new map[string]interface{}, depth int, skipStructural bool) {
+	if isLargeObject(old) || isLargeObject(new) {
+		if !deepEqual(old, new) {
+			addChange(ctx, "modified", path, new)
+		}
+		return
+	}
+
+	// Check modifications for existing fields
+	for k, newVal := range new {
+		newPath := joinPath(path, k)
+		if oldVal, exists := old[k]; exists {
+			compareRecursiveEnhanced(ctx, newPath, oldVal, newVal, depth+1, skipStructural)
+		} else if !skipStructural {
+			addChange(ctx, "added", newPath, newVal)
+		}
+	}
+
+	// Check deletions
+	if !skipStructural {
+		for k, oldVal := range old {
+			if _, exists := new[k]; !exists {
+				addChange(ctx, "deleted", joinPath(path, k), oldVal)
+			}
+		}
+	}
+}
+
+// Example usage function
+func AnalyzeJSONDifferences(old, new json.RawMessage) {
+	opts := DefaultPostmanOptions()
+	
+	// Get both structural and content changes
+	changes, structural, err := ComparePostmanSnapshotsWithStructure(old, new, opts)
+	if err != nil {
+		slog.Error("Failed to compare", "error", err)
+		return
+	}
+	
+	// Log structural changes
+	if len(structural) > 0 {
+		slog.Info("Structural differences found", "count", len(structural))
+		for _, s := range structural {
+			slog.Info("Structure change", 
+				"type", s.Type,
+				"path", s.Path,
+				"field", s.Field)
+		}
+	}
+	
+	// Log content changes
+	if len(changes) > 0 {
+		slog.Info("Content changes found", "count", len(changes))
+		for _, c := range changes {
+			var value string
+			if c.Modification != nil {
+				value = *c.Modification
+			}
+			slog.Info("Content change",
+				"type", c.Type,
+				"path", c.Path,
+				"value", value)
+		}
+	}
+}
+
+// Alternative: Get only structural differences without content comparison
+func GetStructuralDifferencesOnly(old, new json.RawMessage, opts *CompareOptions) ([]StructuralChange, error) {
+	if opts == nil {
+		opts = DefaultPostmanOptions()
+	}
+
+	var oldData, newData any
+
+	if err := json.Unmarshal(old, &oldData); err != nil {
+		return nil, fmt.Errorf("unmarshal old snapshot: %w", err)
+	}
+	if err := json.Unmarshal(new, &newData); err != nil {
+		return nil, fmt.Errorf("unmarshal new snapshot: %w", err)
+	}
+
+	ctx := &compareContext{
+		changes:     make([]Change, 0),
+		opts:        opts,
+		pathIndex:   make(map[string]bool),
+		changeCount: 0,
+	}
+
+	return compareStructureRecursive(ctx, "", oldData, newData, 0), nil
 }
