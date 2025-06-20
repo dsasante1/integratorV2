@@ -813,17 +813,24 @@ func GetSnapshotDiff(collectionID string, snapshotID int64) (DiffResponse, error
 	endpointSet := make(map[string]bool)
 
 	for _, change := range changes {
-
 		enhanceChangeDetail(&change)
 
-		oldValue, err := extractValueByPath(oldSnapshot.Content, change.Path, change.ChangeType == "added")
-		if err != nil && change.ChangeType != "added" {
-			slog.Warn("failed to extract old value", "path", change.Path, "error", err)
+		oldValue, oldErr := extractValueByPath(oldSnapshot.Content, change.Path, change.ChangeType == "added")
+		if oldErr != nil && change.ChangeType != "added" {
+			slog.Warn("failed to extract old value", "path", change.Path, "error", oldErr)
 		}
 
-		newValue, err := extractValueByPath(newSnapshot.Content, change.Path, change.ChangeType == "deleted")
-		if err != nil && change.ChangeType != "deleted" {
-			slog.Warn("failed to extract new value", "path", change.Path, "error", err)
+		newValue, newErr := extractValueByPath(newSnapshot.Content, change.Path, change.ChangeType == "deleted")
+		if newErr != nil && change.ChangeType != "deleted" {
+			slog.Warn("failed to extract new value", "path", change.Path, "error", newErr)
+		}
+
+		oldFailed := oldErr != nil && change.ChangeType != "added"
+		newFailed := newErr != nil && change.ChangeType != "deleted"
+		
+		if oldFailed && newFailed {
+			slog.Error("skipping change due to extraction failures", "path", change.Path, "changeType", change.ChangeType)
+			continue
 		}
 
 		diffDetail := DiffDetail{
@@ -833,7 +840,6 @@ func GetSnapshotDiff(collectionID string, snapshotID int64) (DiffResponse, error
 		}
 
 		diffDetails = append(diffDetails, diffDetail)
-
 		changesByType[change.ChangeType]++
 		if change.EndpointName != "" {
 			endpointSet[change.EndpointName] = true

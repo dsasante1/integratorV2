@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"encoding/json"
 	"github.com/labstack/echo/v4"
+	// "integratorV2/utils"
 )
 
 
@@ -429,9 +430,16 @@ func GetSnapshotDiff(c echo.Context) error {
 	}
 
 	result, err := db.GetFilteredSnapshotDiff(req.CollectionID, validateSnapshotID, req)
+
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "fetch snapshot diff failed: "+err.Error())
 	}
+
+	// data, err := utils.HandleDiffResponse(result)
+
+	// if err != nil {
+	// 	return echo.NewHTTPError(http.StatusBadRequest, "fetch snapshot diff failed: "+err.Error())
+	// }
 
 	return c.JSON(http.StatusOK, result)
 }

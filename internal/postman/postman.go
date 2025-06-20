@@ -177,150 +177,7 @@ func ComparePostmanSnapshots(old, new json.RawMessage, opts *CompareOptions) ([]
 	return ctx.changes, nil
 }
 
-// processStructuralChanges should ONLY handle structural differences
-func processStructuralChanges(ctx *compareContext, path string, old, new interface{}, depth int) {
-	if ctx.opts.MaxChanges > 0 && ctx.changeCount >= ctx.opts.MaxChanges {
-		return
-	}
-	
-	if ctx.opts.MaxDepth > 0 && depth > ctx.opts.MaxDepth {
-		return
-	}
-	
-	// Handle nil cases
-	if old == nil && new == nil {
-		return
-	}
-	if old == nil {
-		addChange(ctx, "added", path, new)
-		return
-	}
-	if new == nil {
-		addChange(ctx, "deleted", path, old)
-		return
-	}
-	
-	// Check if both are objects
-	oldObj, oldIsObj := old.(map[string]interface{})
-	newObj, newIsObj := new.(map[string]interface{})
-	
-	if !oldIsObj || !newIsObj {
-		return
-	}
-	
-	// Process added fields
-	for key, newVal := range newObj {
-		newPath := joinPath(path, key)
-		if shouldIgnorePath(newPath, ctx.opts.IgnorePaths) {
-			continue
-		}
-		if _, exists := oldObj[key]; !exists {
-			addChange(ctx, "added", newPath, newVal)
-		}
-	}
-	
-	// Process deleted fields
-	for key, oldVal := range oldObj {
-		newPath := joinPath(path, key)
-		if shouldIgnorePath(newPath, ctx.opts.IgnorePaths) {
-			continue
-		}
-		if _, exists := newObj[key]; !exists {
-			// Field was deleted - add the entire content that was deleted
-			addChange(ctx, "deleted", newPath, oldVal)
-		}
-	}
-	
-	for key := range oldObj {
-		if newVal, exists := newObj[key]; exists {
-			newPath := joinPath(path, key)
-			if shouldIgnorePath(newPath, ctx.opts.IgnorePaths) {
-				continue
-			}
 
-			processStructuralChanges(ctx, newPath, oldObj[key], newVal, depth+1)
-		}
-	}
-	
-	// Also check arrays for structural changes
-	oldArr, oldIsArr := old.([]interface{})
-	newArr, newIsArr := new.([]interface{})
-	
-	if oldIsArr && newIsArr {
-
-		if len(oldArr) != len(newArr) {
-
-			maxLen := len(oldArr)
-			if len(newArr) > maxLen {
-				maxLen = len(newArr)
-			}
-			
-			for i := 0; i < maxLen; i++ {
-				indexPath := fmt.Sprintf("%s[%d]", path, i)
-				if i >= len(oldArr) {
-	
-					addChange(ctx, "added", indexPath, newArr[i])
-				} else if i >= len(newArr) {
-
-					addChange(ctx, "deleted", indexPath, oldArr[i])
-				} else {
-	
-					processStructuralChanges(ctx, indexPath, oldArr[i], newArr[i], depth+1)
-				}
-			}
-		} else {
-			// Same length - check each element for structural changes
-			for i := 0; i < len(oldArr); i++ {
-				indexPath := fmt.Sprintf("%s[%d]", path, i)
-				processStructuralChanges(ctx, indexPath, oldArr[i], newArr[i], depth+1)
-			}
-		}
-	}
-}
-
-func hasStructuralChanges(ctx *compareContext, path string, old, new interface{}) bool {
-	// Check if both are objects
-	oldObj, oldIsObj := old.(map[string]interface{})
-	newObj, newIsObj := new.(map[string]interface{})
-	
-	if !oldIsObj || !newIsObj {
-		return false
-	}
-	
-	for key := range newObj {
-		if shouldIgnorePath(joinPath(path, key), ctx.opts.IgnorePaths) {
-			continue
-		}
-		if _, exists := oldObj[key]; !exists {
-			return true
-		}
-	}
-	
-	// Check for deleted fields (in old but not in new)
-	for key := range oldObj {
-		if shouldIgnorePath(joinPath(path, key), ctx.opts.IgnorePaths) {
-			continue
-		}
-		if _, exists := newObj[key]; !exists {
-			return true
-		}
-	}
-	
-	// Recursively check nested objects for structural changes
-	for key := range oldObj {
-		if newVal, exists := newObj[key]; exists {
-			newPath := joinPath(path, key)
-			if shouldIgnorePath(newPath, ctx.opts.IgnorePaths) {
-				continue
-			}
-			if hasStructuralChanges(ctx, newPath, oldObj[key], newVal) {
-				return true
-			}
-		}
-	}
-	
-	return false
-}
 
 func compareRecursive(ctx *compareContext, path string, old, new interface{}, depth int) {
 
@@ -936,4 +793,247 @@ func GetStructuralDifferencesOnly(old, new json.RawMessage, opts *CompareOptions
 	}
 
 	return compareStructureRecursive(ctx, "", oldData, newData, 0), nil
+}
+
+func hasStructuralChanges(ctx *compareContext, path string, old, new interface{}) bool {
+	// Check if both are objects
+	oldObj, oldIsObj := old.(map[string]interface{})
+	newObj, newIsObj := new.(map[string]interface{})
+	
+	if oldIsObj && newIsObj {
+		// Check for added fields (in new but not in old)
+		for key := range newObj {
+			if shouldIgnorePath(joinPath(path, key), ctx.opts.IgnorePaths) {
+				continue
+			}
+			if _, exists := oldObj[key]; !exists {
+				return true
+			}
+		}
+		
+		// Check for deleted fields (in old but not in new)
+		for key := range oldObj {
+			if shouldIgnorePath(joinPath(path, key), ctx.opts.IgnorePaths) {
+				continue
+			}
+			if _, exists := newObj[key]; !exists {
+				return true
+			}
+		}
+		
+		// Recursively check nested objects for structural changes
+		for key := range oldObj {
+			if newVal, exists := newObj[key]; exists {
+				newPath := joinPath(path, key)
+				if shouldIgnorePath(newPath, ctx.opts.IgnorePaths) {
+					continue
+				}
+				if hasStructuralChanges(ctx, newPath, oldObj[key], newVal) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	
+	// Check arrays for length differences (additions/deletions)
+	oldArr, oldIsArr := old.([]interface{})
+	newArr, newIsArr := new.([]interface{})
+	
+	if oldIsArr && newIsArr {
+		// For Postman item arrays, check by comparing items by key
+		if isPostmanItemArray(path) {
+			oldKeys := make(map[string]bool)
+			newKeys := make(map[string]bool)
+			
+			for _, item := range oldArr {
+				if m, ok := item.(map[string]interface{}); ok {
+					if key := getItemKey(m); key != "" {
+						oldKeys[key] = true
+					}
+				}
+			}
+			
+			for _, item := range newArr {
+				if m, ok := item.(map[string]interface{}); ok {
+					if key := getItemKey(m); key != "" {
+						newKeys[key] = true
+					}
+				}
+			}
+			
+			// Check if any items were added or deleted
+			for key := range oldKeys {
+				if !newKeys[key] {
+					return true // Item deleted
+				}
+			}
+			for key := range newKeys {
+				if !oldKeys[key] {
+					return true // Item added
+				}
+			}
+			
+			// Recursively check remaining items
+			for i := 0; i < len(oldArr) && i < len(newArr); i++ {
+				if hasStructuralChanges(ctx, fmt.Sprintf("%s[%d]", path, i), oldArr[i], newArr[i]) {
+					return true
+				}
+			}
+		} else {
+			// For regular arrays, length difference means structural change
+			if len(oldArr) != len(newArr) {
+				return true
+			}
+			// Recursively check each element
+			for i := 0; i < len(oldArr); i++ {
+				if hasStructuralChanges(ctx, fmt.Sprintf("%s[%d]", path, i), oldArr[i], newArr[i]) {
+					return true
+				}
+			}
+		}
+	}
+	
+	return false
+}
+
+func processStructuralChanges(ctx *compareContext, path string, old, new interface{}, depth int) {
+	if ctx.opts.MaxChanges > 0 && ctx.changeCount >= ctx.opts.MaxChanges {
+		return
+	}
+	
+	if ctx.opts.MaxDepth > 0 && depth > ctx.opts.MaxDepth {
+		return
+	}
+	
+	// Handle objects
+	oldObj, oldIsObj := old.(map[string]interface{})
+	newObj, newIsObj := new.(map[string]interface{})
+	
+	if oldIsObj && newIsObj {
+		// Process added fields
+		for key, newVal := range newObj {
+			newPath := joinPath(path, key)
+			if shouldIgnorePath(newPath, ctx.opts.IgnorePaths) {
+				continue
+			}
+			if _, exists := oldObj[key]; !exists {
+				// Field was added
+				addChange(ctx, "added", newPath, newVal)
+			}
+		}
+		
+		// Process deleted fields
+		for key, oldVal := range oldObj {
+			newPath := joinPath(path, key)
+			if shouldIgnorePath(newPath, ctx.opts.IgnorePaths) {
+				continue
+			}
+			if _, exists := newObj[key]; !exists {
+				// Field was deleted
+				addChange(ctx, "deleted", newPath, oldVal)
+			}
+		}
+		
+		// Recursively check for structural changes in nested objects
+		for key := range oldObj {
+			if newVal, exists := newObj[key]; exists {
+				newPath := joinPath(path, key)
+				if shouldIgnorePath(newPath, ctx.opts.IgnorePaths) {
+					continue
+				}
+				processStructuralChanges(ctx, newPath, oldObj[key], newVal, depth+1)
+			}
+		}
+		return
+	}
+	
+	oldArr, oldIsArr := old.([]interface{})
+	newArr, newIsArr := new.([]interface{})
+	
+	if oldIsArr && newIsArr {
+		if isPostmanItemArray(path) {
+			// Special handling for Postman item arrays
+			processPostmanItemStructuralChanges(ctx, path, oldArr, newArr, depth)
+		} else {
+			if len(oldArr) != len(newArr) {
+				maxLen := len(oldArr)
+				if len(newArr) > maxLen {
+					maxLen = len(newArr)
+				}
+				
+				for i := 0; i < maxLen; i++ {
+					if i >= len(oldArr) {
+						// Element added
+						addChange(ctx, "added", fmt.Sprintf("%s[%d]", path, i), newArr[i])
+					} else if i >= len(newArr) {
+						// Element deleted
+						addChange(ctx, "deleted", fmt.Sprintf("%s[%d]", path, i), oldArr[i])
+					}
+				}
+			}
+			
+			minLen := len(oldArr)
+			if len(newArr) < minLen {
+				minLen = len(newArr)
+			}
+			for i := 0; i < minLen; i++ {
+				processStructuralChanges(ctx, fmt.Sprintf("%s[%d]", path, i), oldArr[i], newArr[i], depth+1)
+			}
+		}
+	}
+}
+
+// Special handling for Postman item arrays to avoid false modifications
+func processPostmanItemStructuralChanges(ctx *compareContext, path string, oldArr, newArr []interface{}, depth int) {
+	oldMap := make(map[string]interface{})
+	oldIndices := make(map[string]int)
+	
+	// Build map of old items by key
+	for i, item := range oldArr {
+		if m, ok := item.(map[string]interface{}); ok {
+			key := getItemKey(m)
+			if key != "" {
+				oldMap[key] = item
+				oldIndices[key] = i
+			}
+		}
+	}
+	
+	// Build map of new items by key
+	newMap := make(map[string]interface{})
+	newIndices := make(map[string]int)
+	
+	for i, item := range newArr {
+		if m, ok := item.(map[string]interface{}); ok {
+			key := getItemKey(m)
+			if key != "" {
+				newMap[key] = item
+				newIndices[key] = i
+			}
+		}
+	}
+	
+	// Report deletions
+	for key, oldItem := range oldMap {
+		if _, exists := newMap[key]; !exists {
+			indexPath := fmt.Sprintf("%s[%d]", path, oldIndices[key])
+			addChange(ctx, "deleted", indexPath, oldItem)
+		}
+	}
+	
+	// Report additions
+	for key, newItem := range newMap {
+		if _, exists := oldMap[key]; !exists {
+			indexPath := fmt.Sprintf("%s[%d]", path, newIndices[key])
+			addChange(ctx, "added", indexPath, newItem)
+		}
+	}
+	
+	for key, newItem := range newMap {
+		if oldItem, exists := oldMap[key]; exists {
+			indexPath := fmt.Sprintf("%s[%d]", path, newIndices[key])
+			processStructuralChanges(ctx, indexPath, oldItem, newItem, depth+1)
+		}
+	}
 }
