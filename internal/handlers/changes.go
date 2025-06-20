@@ -415,7 +415,6 @@ func GetSnapshotDiff(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "Invalid snapshot ID")
 	}
 
-	// Set defaults
 	if req.PageSize == 0 {
 		req.PageSize = 50 // Default page size
 	}

@@ -205,8 +205,6 @@ func processStructuralChanges(ctx *compareContext, path string, old, new interfa
 	newObj, newIsObj := new.(map[string]interface{})
 	
 	if !oldIsObj || !newIsObj {
-		// Not objects - no structural changes to report here
-		// Do NOT call compareRecursive or report modifications
 		return
 	}
 	
@@ -217,7 +215,6 @@ func processStructuralChanges(ctx *compareContext, path string, old, new interfa
 			continue
 		}
 		if _, exists := oldObj[key]; !exists {
-			// Field was added - add the entire content
 			addChange(ctx, "added", newPath, newVal)
 		}
 	}
@@ -234,15 +231,13 @@ func processStructuralChanges(ctx *compareContext, path string, old, new interfa
 		}
 	}
 	
-	// Recursively check for structural changes in nested objects
-	// Only process objects that exist in both old and new
 	for key := range oldObj {
 		if newVal, exists := newObj[key]; exists {
 			newPath := joinPath(path, key)
 			if shouldIgnorePath(newPath, ctx.opts.IgnorePaths) {
 				continue
 			}
-			// Continue looking for structural changes only
+
 			processStructuralChanges(ctx, newPath, oldObj[key], newVal, depth+1)
 		}
 	}
@@ -252,9 +247,9 @@ func processStructuralChanges(ctx *compareContext, path string, old, new interfa
 	newArr, newIsArr := new.([]interface{})
 	
 	if oldIsArr && newIsArr {
-		// For arrays, structural changes are additions/deletions of elements
+
 		if len(oldArr) != len(newArr) {
-			// Different lengths - report additions or deletions
+
 			maxLen := len(oldArr)
 			if len(newArr) > maxLen {
 				maxLen = len(newArr)
@@ -263,13 +258,13 @@ func processStructuralChanges(ctx *compareContext, path string, old, new interfa
 			for i := 0; i < maxLen; i++ {
 				indexPath := fmt.Sprintf("%s[%d]", path, i)
 				if i >= len(oldArr) {
-					// Element added
+	
 					addChange(ctx, "added", indexPath, newArr[i])
 				} else if i >= len(newArr) {
-					// Element deleted
+
 					addChange(ctx, "deleted", indexPath, oldArr[i])
 				} else {
-					// Element exists in both - check for structural changes within it
+	
 					processStructuralChanges(ctx, indexPath, oldArr[i], newArr[i], depth+1)
 				}
 			}
@@ -283,18 +278,15 @@ func processStructuralChanges(ctx *compareContext, path string, old, new interfa
 	}
 }
 
-// hasStructuralChanges checks if there are any structural differences (field additions/deletions)
 func hasStructuralChanges(ctx *compareContext, path string, old, new interface{}) bool {
 	// Check if both are objects
 	oldObj, oldIsObj := old.(map[string]interface{})
 	newObj, newIsObj := new.(map[string]interface{})
 	
 	if !oldIsObj || !newIsObj {
-		// If types differ or not objects, let compareRecursive handle it
 		return false
 	}
 	
-	// Check for added fields (in new but not in old)
 	for key := range newObj {
 		if shouldIgnorePath(joinPath(path, key), ctx.opts.IgnorePaths) {
 			continue
