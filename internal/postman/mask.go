@@ -113,20 +113,11 @@ type MaskedValue struct {
 }
 
 
-type MaskingStats struct {
-	FieldsMasked     int                     `json:"fields_masked"`
-	ValuesMasked     int                     `json:"values_masked"`
-	MaskedFieldTypes map[string]int          `json:"masked_field_types"`
-	MaskedValues     map[string]*MaskedValue `json:"masked_values,omitempty"`
-	ProcessingTime   time.Duration           `json:"processing_time"`
-}
+
 
 
 type MaskingResult struct {
 	Collection *PostmanCollectionStructure `json:"collection"`
-	Stats      *MaskingStats      `json:"stats"`
-	MaskingID  string             `json:"masking_id"`
-	MaskedAt   time.Time          `json:"masked_at"`
 }
 
 
@@ -232,22 +223,22 @@ func (m *CollectionMasker) MaskCollection(collection *PostmanCollectionStructure
 	if !m.config.Enabled {
 		return &MaskingResult{
 			Collection: collection,
-			Stats:      &MaskingStats{},
-			MaskedAt:   time.Now(),
+			// Stats:      &MaskingStats{},
+			// MaskedAt:   time.Now(),
 		}, nil
 	}
 	
-	start := time.Now()
+	// start := time.Now()
 	
 	if collection == nil {
 		return nil, fmt.Errorf("collection cannot be nil")
 	}
 	
 	
-	stats := &MaskingStats{
-		MaskedFieldTypes: make(map[string]int),
-		MaskedValues:     make(map[string]*MaskedValue),
-	}
+	// stats := &MaskingStats{
+	// 	MaskedFieldTypes: make(map[string]int),
+	// 	MaskedValues:     make(map[string]*MaskedValue),
+	// }
 	
 	
 	maskedCollection := &PostmanCollectionStructure{}
@@ -256,33 +247,29 @@ func (m *CollectionMasker) MaskCollection(collection *PostmanCollectionStructure
 	
 	ctx := &maskingContext{
 		masker: m,
-		stats:  stats,
+		// stats:  stats,
 	}
 	
 	
 	maskedCollection.Item = m.maskItems(ctx, collection.Item, "item")
 	
-	stats.ProcessingTime = time.Since(start)
+
 	
 	if m.config.LogMasking {
 		slog.Info("Masking completed",
-			"fields_masked", stats.FieldsMasked,
-			"values_masked", stats.ValuesMasked,
-			"duration", stats.ProcessingTime)
+)
 	}
 	
 	return &MaskingResult{
 		Collection: maskedCollection,
-		Stats:      stats,
-		MaskingID:  generateMaskingID(),
-		MaskedAt:   time.Now(),
+
 	}, nil
 }
 
 
 type maskingContext struct {
 	masker *CollectionMasker
-	stats  *MaskingStats
+
 }
 
 
@@ -494,11 +481,7 @@ func (m *CollectionMasker) recordMaskedValue(ctx *maskingContext, path, fieldNam
 			maskedValue.Encrypted = &encrypted
 		}
 	}
-	
-	ctx.stats.FieldsMasked++
-	ctx.stats.ValuesMasked++
-	ctx.stats.MaskedFieldTypes[dataType]++
-	ctx.stats.MaskedValues[path] = maskedValue
+
 	
 	if m.config.LogMasking {
 		slog.Debug("Masked sensitive data",
