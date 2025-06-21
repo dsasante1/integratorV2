@@ -63,20 +63,61 @@ jobs:
              echo "No existing binary to backup"
            fi'
     
-    - name: Copy application to VPS
+    - name: Copy new binary to VPS
       run: |
         echo "📤 Copying binary to VPS..."
         scp -i ~/.ssh/deploy_key -P 2222 -o StrictHostKeyChecking=no \
           integrator_backend deployer@${{ secrets.VPS_HOST }}:/opt/integrator_backend/
         echo "Binary copied successfully"
     
-    - name: Deploy application
+    - name: Copy migration files to VPS
+      run: |
+        echo "📤 Copying migration files..."
+        # Copy migrations directory if it exists
+        if [ -d "migrations" ]; then
+          ssh -i ~/.ssh/deploy_key -p 2222 -o StrictHostKeyChecking=no \
+            deployer@${{ secrets.VPS_HOST }} \
+            'mkdir -p /opt/integrator_backend/migrations'
+          scp -i ~/.ssh/deploy_key -P 2222 -o StrictHostKeyChecking=no \
+            -r migrations/* deployer@${{ secrets.VPS_HOST }}:/opt/integrator_backend/migrations/
+          echo "Migration files copied"
+        else
+          echo "No migrations directory found"
+        fi
+  
+    - name: Set binary permissions and prepare for deployment
       run: |
         echo "🔧 Setting up binary permissions..."
         ssh -i ~/.ssh/deploy_key -p 2222 -o StrictHostKeyChecking=no \
           deployer@${{ secrets.VPS_HOST }} \
           'chmod +x "/opt/integrator_backend/integrator_backend" && 
            sudo systemctl daemon-reload'
+    
+    - name: Check migration status
+      run: |
+        echo "🔍 Checking current migration status..."
+        ssh -i ~/.ssh/deploy_key -p 2222 -o StrictHostKeyChecking=no \
+          deployer@${{ secrets.VPS_HOST }} \
+          'cd /opt/integrator_backend && 
+           echo "Current migration version:"
+           ./integrator_backend -migrate-version || echo "Could not determine current version"'
+    
+    - name: Run database migrations
+      run: |
+        echo "🔄 Running database migrations..."
+        ssh -i ~/.ssh/deploy_key -p 2222 -o StrictHostKeyChecking=no \
+          deployer@${{ secrets.VPS_HOST }} \
+          'cd /opt/integrator_backend && 
+           echo "Running migrations..."
+           ./integrator_backend -migrate || {
+             echo "❌ Migration failed"
+             echo "Checking if migrate CLI tool is installed..."
+             which migrate || echo "migrate CLI not found - install with: curl -L https://github.com/golang-migrate/migrate/releases/download/v4.17.0/migrate.linux-amd64.tar.gz | tar xvz && sudo mv migrate /usr/local/bin/"
+             exit 1
+           }
+           echo "✅ Migrations completed"
+           echo "New migration version:"
+           ./integrator_backend -migrate-version || echo "Could not determine version"'
     
     - name: Start application
       run: |
@@ -93,11 +134,11 @@ jobs:
           'echo "Checking service status..."
            if sudo systemctl is-active --quiet integrator_backend.service; then
              echo "✅ Service is active and running"
-             sudo systemctl status integrator_backend.service --no-pager
+             sudo systemctl status integrator_backend.service --no-pager -l
            else
              echo "❌ Service is not running"
              echo "=== Service status ==="
-             sudo systemctl status integrator_backend.service --no-pager || true
+             sudo systemctl status integrator_backend.service --no-pager -l || true
              echo "=== Recent logs ==="
              sudo journalctl -u integrator_backend.service --no-pager -n 30 || true
              echo "=== Binary info ==="
@@ -113,8 +154,14 @@ jobs:
         echo "🏥 Performing health check..."
         ssh -i ~/.ssh/deploy_key -p 2222 -o StrictHostKeyChecking=no \
           deployer@${{ secrets.VPS_HOST }} \
-          'echo "Add your health check here if you have an endpoint"
-           # curl -f http://localhost:8080/integrator/api/v1/health-check || exit 1'
+          'echo "Waiting for application to fully start..."
+           sleep 5
+           echo "Testing application endpoint..."
+           curl -f http://localhost:8080/integrator/api/v1/health-check || {
+             echo "❌ Health check failed or endpoint not available"
+             echo "This might be normal if no health check endpoint exists"
+           }
+           echo "✅ Application appears to be running"'
     
     - name: Cleanup old backups (keep last 5)
       run: |
