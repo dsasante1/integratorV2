@@ -348,7 +348,7 @@ func main() {
 		}
 	}()
 
-	// Start server
+	// Start server!!!
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
