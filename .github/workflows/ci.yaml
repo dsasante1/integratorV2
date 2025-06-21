@@ -69,33 +69,7 @@ jobs:
         scp -i ~/.ssh/deploy_key -P 2222 -o StrictHostKeyChecking=no \
           integrator_backend deployer@${{ secrets.VPS_HOST }}:/opt/integrator_backend/
         echo "Binary copied successfully (migrations embedded)"
-    
-    - name: Ensure environment file exists
-      run: |
-        echo "🔧 Checking environment configuration..."
-        ssh -i ~/.ssh/deploy_key -p 2222 -o StrictHostKeyChecking=no \
-          deployer@${{ secrets.VPS_HOST }} \
-          'echo "Checking for .env file..."
-           if [ ! -f "/opt/integrator_backend/.env" ]; then
-             echo "❌ .env file missing! Creating it..."
-           else
-             echo "✅ .env file exists, updating it..."
-           fi
-           
-           # Create the .env file with correct values
-           echo "DB_HOST=localhost" > /opt/integrator_backend/.env
-           echo "DB_PORT=5432" >> /opt/integrator_backend/.env
-           echo "DB_USER=integrator_user" >> /opt/integrator_backend/.env
-           echo "DB_PASSWORD=simplepassword123" >> /opt/integrator_backend/.env
-           echo "DB_NAME=integrator_backend" >> /opt/integrator_backend/.env
-           echo "PORT=8080" >> /opt/integrator_backend/.env
-           echo "ENV=production" >> /opt/integrator_backend/.env
-           
-           chmod 644 /opt/integrator_backend/.env
-           echo "✅ .env file configured"
-           echo "File contents:"
-           cat /opt/integrator_backend/.env'
-    
+        
     - name: Set binary permissions and prepare for deployment
       run: |
         echo "🔧 Setting up binary permissions..."
