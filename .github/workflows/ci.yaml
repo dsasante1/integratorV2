@@ -90,15 +90,21 @@ jobs:
         echo "🔍 Verifying deployment..."
         ssh -i ~/.ssh/deploy_key -p 2222 -o StrictHostKeyChecking=no \
           deployer@${{ secrets.VPS_HOST }} \
-          'if sudo systemctl is-active --quiet integrator_backend.service; then
+          'echo "Checking service status..."
+           if sudo systemctl is-active --quiet integrator_backend.service; then
              echo "✅ Service is active and running"
              sudo systemctl status integrator_backend.service --no-pager
            else
              echo "❌ Service is not running"
-             echo "Service status:"
-             sudo systemctl status integrator_backend.service --no-pager
-             echo "Recent logs:"
-             sudo journalctl -u integrator_backend.service --no-pager -n 20
+             echo "=== Service status ==="
+             sudo systemctl status integrator_backend.service --no-pager || true
+             echo "=== Recent logs ==="
+             sudo journalctl -u integrator_backend.service --no-pager -n 30 || true
+             echo "=== Binary info ==="
+             ls -la /opt/integrator_backend/integrator_backend || true
+             echo "=== Manual test ==="
+             echo "Testing binary manually for 5 seconds..."
+             timeout 5s /opt/integrator_backend/integrator_backend || echo "Binary test completed (exit code: $?)"
              exit 1
            fi'
     
