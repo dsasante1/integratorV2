@@ -29,121 +29,98 @@ jobs:
     - name: Build application
       run: |
         CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o integrator_backend .
+        ls -la integrator_backend
+    
+    - name: Setup SSH key and known hosts
+      run: |
+        # Create SSH directory
+        mkdir -p ~/.ssh
+        chmod 700 ~/.ssh
+        
+        # Add SSH private key
+        echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+        chmod 600 ~/.ssh/deploy_key
+        
+        # Add server to known hosts to avoid host verification prompt
+        ssh-keyscan -p 2222 ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
     
     - name: Stop existing application
-      uses: appleboy/ssh-action@v1.0.3
-      with:
-        host: ${{ secrets.VPS_HOST }}
-        username: deployer
-        key: ${{ secrets.DEPLOY_SSH_KEY }}
-        port: 2222
-        timeout: 60s
-        command_timeout: 30s
-        script: |
-          echo "🛑 Stopping existing application..."
-          sudo systemctl stop integrator_backend.service || true
-          sleep 2
+      run: |
+        echo "🛑 Stopping existing application..."
+        ssh -i ~/.ssh/deploy_key -p 2222 -o StrictHostKeyChecking=no \
+          deployer@${{ secrets.VPS_HOST }} \
+          'sudo systemctl stop integrator_backend.service || true; sleep 2'
     
     - name: Backup current binary (if exists)
-      uses: appleboy/ssh-action@v1.0.3
-      with:
-        host: ${{ secrets.VPS_HOST }}
-        username: deployer
-        key: ${{ secrets.DEPLOY_SSH_KEY }}
-        port: 2222
-        timeout: 60s
-        command_timeout: 30s
-        script: |
-          if [ -f "/opt/integrator_backend/integrator_backend" ]; then
-            echo "📦 Backing up current binary..."
-            cp "/opt/integrator_backend/integrator_backend" "/opt/integrator_backend/integrator_backend.backup.$(date +%Y%m%d_%H%M%S)"
-          fi
+      run: |
+        echo "📦 Backing up current binary..."
+        ssh -i ~/.ssh/deploy_key -p 2222 -o StrictHostKeyChecking=no \
+          deployer@${{ secrets.VPS_HOST }} \
+          'if [ -f "/opt/integrator_backend/integrator_backend" ]; then 
+             cp "/opt/integrator_backend/integrator_backend" "/opt/integrator_backend/integrator_backend.backup.$(date +%Y%m%d_%H%M%S)"
+             echo "Backup created"
+           else
+             echo "No existing binary to backup"
+           fi'
     
     - name: Copy application to VPS
-      uses: appleboy/scp-action@v0.1.7
-      with:
-        host: ${{ secrets.VPS_HOST }}
-        username: deployer
-        key: ${{ secrets.DEPLOY_SSH_KEY }}
-        port: 2222
-        source: "integrator_backend"
-        target: "/opt/integrator_backend/"
-        timeout: 120s
+      run: |
+        echo "📤 Copying binary to VPS..."
+        scp -i ~/.ssh/deploy_key -P 2222 -o StrictHostKeyChecking=no \
+          integrator_backend deployer@${{ secrets.VPS_HOST }}:/opt/integrator_backend/
+        echo "Binary copied successfully"
     
     - name: Deploy application
-      uses: appleboy/ssh-action@v1.0.3
-      with:
-        host: ${{ secrets.VPS_HOST }}
-        username: deployer
-        key: ${{ secrets.DEPLOY_SSH_KEY }}
-        port: 2222
-        timeout: 60s
-        command_timeout: 30s
-        script: |
-          echo "🔧 Setting up binary permissions..."
-          chmod +x "/opt/integrator_backend/integrator_backend"
-          
-          # Reload systemd in case service file changed
-          sudo systemctl daemon-reload
+      run: |
+        echo "🔧 Setting up binary permissions..."
+        ssh -i ~/.ssh/deploy_key -p 2222 -o StrictHostKeyChecking=no \
+          deployer@${{ secrets.VPS_HOST }} \
+          'chmod +x "/opt/integrator_backend/integrator_backend" && 
+           sudo systemctl daemon-reload'
     
     - name: Start application
-      uses: appleboy/ssh-action@v1.0.3
-      with:
-        host: ${{ secrets.VPS_HOST }}
-        username: deployer
-        key: ${{ secrets.DEPLOY_SSH_KEY }}
-        port: 2222
-        timeout: 60s
-        command_timeout: 30s
-        script: |
-          echo "🚀 Starting application..."
-          sudo systemctl start integrator_backend.service
-          sleep 3
+      run: |
+        echo "🚀 Starting application..."
+        ssh -i ~/.ssh/deploy_key -p 2222 -o StrictHostKeyChecking=no \
+          deployer@${{ secrets.VPS_HOST }} \
+          'sudo systemctl start integrator_backend.service && sleep 3'
         
     - name: Verify deployment
-      uses: appleboy/ssh-action@v1.0.3
-      with:
-        host: ${{ secrets.VPS_HOST }}
-        username: deployer
-        key: ${{ secrets.DEPLOY_SSH_KEY }}
-        port: 2222
-        timeout: 60s
-        command_timeout: 30s
-        script: |
-          echo "🔍 Verifying deployment..."
-          
-          # Check service status
-          if sudo systemctl is-active --quiet integrator_backend.service; then
-            echo "✅ Service is active and running"
-          else
-            echo "❌ Service is not running"
-            echo "Service status:"
-            sudo systemctl status integrator_backend.service
-            echo "Recent logs:"
-            sudo journalctl -u integrator_backend.service --no-pager -n 20
-            exit 1
-          fi
-          
-          # Optional: Health check endpoint
-          # echo "🏥 Performing health check..."
-          # curl -f http://localhost:8080/integrator/api/v1/health-check || {
-          #   echo "❌ Health check failed"
-          #   exit 1
-          # }
-          
-          echo "🎉 Deployment completed successfully!"
+      run: |
+        echo "🔍 Verifying deployment..."
+        ssh -i ~/.ssh/deploy_key -p 2222 -o StrictHostKeyChecking=no \
+          deployer@${{ secrets.VPS_HOST }} \
+          'if sudo systemctl is-active --quiet integrator_backend.service; then
+             echo "✅ Service is active and running"
+             sudo systemctl status integrator_backend.service --no-pager
+           else
+             echo "❌ Service is not running"
+             echo "Service status:"
+             sudo systemctl status integrator_backend.service --no-pager
+             echo "Recent logs:"
+             sudo journalctl -u integrator_backend.service --no-pager -n 20
+             exit 1
+           fi'
+    
+    - name: Health check (optional)
+      run: |
+        echo "🏥 Performing health check..."
+        ssh -i ~/.ssh/deploy_key -p 2222 -o StrictHostKeyChecking=no \
+          deployer@${{ secrets.VPS_HOST }} \
+          'echo "Add your health check here if you have an endpoint"
+           # curl -f http://localhost:8080/integrator/api/v1/health-check || exit 1'
     
     - name: Cleanup old backups (keep last 5)
-      uses: appleboy/ssh-action@v1.0.3
-      with:
-        host: ${{ secrets.VPS_HOST }}
-        username: deployer
-        key: ${{ secrets.DEPLOY_SSH_KEY }}
-        port: 2222
-        timeout: 60s
-        command_timeout: 30s
-        script: |
-          echo "🧹 Cleaning up old backups..."
-          cd "/opt/integrator_backend"
-          ls -t integrator_backend.backup.* 2>/dev/null | tail -n +6 | xargs -r rm -f
-          echo "Cleanup completed"
+      run: |
+        echo "🧹 Cleaning up old backups..."
+        ssh -i ~/.ssh/deploy_key -p 2222 -o StrictHostKeyChecking=no \
+          deployer@${{ secrets.VPS_HOST }} \
+          'cd "/opt/integrator_backend" && 
+           ls -t integrator_backend.backup.* 2>/dev/null | tail -n +6 | xargs -r rm -f &&
+           echo "Cleanup completed"'
+    
+    - name: Cleanup SSH key
+      if: always()
+      run: |
+        # Remove SSH key for security
+        rm -f ~/.ssh/deploy_key
