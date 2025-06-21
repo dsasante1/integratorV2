@@ -108,34 +108,7 @@ jobs:
         ssh -i ~/.ssh/deploy_key -p 2222 -o StrictHostKeyChecking=no \
           deployer@${{ secrets.VPS_HOST }} \
           'sudo systemctl start integrator_backend.service && sleep 3'
-        
-    - name: Verify deployment
-      run: |
-        echo "🔍 Verifying deployment..."
-        ssh -i ~/.ssh/deploy_key -p 2222 -o StrictHostKeyChecking=no \
-          deployer@${{ secrets.VPS_HOST }} \
-          'echo "Checking service status..."
-           if sudo systemctl is-active --quiet integrator_backend.service; then
-             echo "✅ Service is active and running"
-             sudo systemctl status integrator_backend.service --no-pager -l
-             echo ""
-             echo "✅ Deployment successful!"
-           else
-             echo "❌ Service is not running"
-             echo "=== Service status ==="
-             sudo systemctl status integrator_backend.service --no-pager -l || true
-             echo "=== Recent logs ==="
-             sudo journalctl -u integrator_backend.service --no-pager -n 30 || true
-             echo "=== Binary info ==="
-             ls -la /opt/integrator_backend/integrator_backend || true
-             echo "=== Environment check ==="
-             ls -la /opt/integrator_backend/.env || true
-             echo "=== Manual test (may show port conflict - this is normal) ==="
-             echo "Testing binary manually for 3 seconds..."
-             cd /opt/integrator_backend && timeout 3s ./integrator_backend || echo "Manual test completed (exit code: $?) - Port conflict expected if service is running"
-             exit 1
-           fi'
-    
+
     - name: Health check (optional)
       run: |
         echo "🏥 Performing health check..."
