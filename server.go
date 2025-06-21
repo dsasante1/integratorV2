@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"embed"
 	"flag"
 	"fmt"
 	"integratorV2/internal/config"
@@ -14,15 +15,22 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"os/exec"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/golang-migrate/migrate/v4"
+	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 )
+
+// Embed migration files into the binary
+//go:embed migrations/*.sql
+var migrationFiles embed.FS
+
 //TODO handle config properly
 func LoadEnv() error {
 	if err := godotenv.Load(); err != nil {
@@ -42,81 +50,119 @@ func GetDBURL() string {
 		dbUser, dbPassword, dbHost, dbPort, dbName)
 }
 
-func MigrateUp() error {
+// Create a migrate instance using embedded files
+func createMigrator() (*migrate.Migrate, error) {
 	if err := LoadEnv(); err != nil {
-		return err
+		return nil, err
+	}
+
+	// Create source from embedded files
+	sourceDriver, err := iofs.New(migrationFiles, "migrations")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create migration source: %w", err)
 	}
 
 	dbURL := GetDBURL()
-	cmd := exec.Command("migrate", "-path", "migrations", "-database", dbURL, "up")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	
+	// Create migrator
+	m, err := migrate.NewWithSourceInstance("iofs", sourceDriver, dbURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create migrator: %w", err)
+	}
+
+	return m, nil
+}
+
+func MigrateUp() error {
+	m, err := createMigrator()
+	if err != nil {
+		return err
+	}
+	defer m.Close()
+
+	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+		return fmt.Errorf("failed to run migrations: %w", err)
+	}
+
+	if err == migrate.ErrNoChange {
+		slog.Info("No new migrations to apply")
+	} else {
+		slog.Info("Migrations applied successfully")
+	}
+
+	return nil
 }
 
 func MigrateDown() error {
-	if err := LoadEnv(); err != nil {
+	m, err := createMigrator()
+	if err != nil {
 		return err
 	}
+	defer m.Close()
 
-	dbURL := GetDBURL()
-	cmd := exec.Command("migrate", "-path", "migrations", "-database", dbURL, "down", "1")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
-}
-
-func MigrateCreate(name string) error {
-	if name == "" {
-		return fmt.Errorf("migration name is required")
+	if err := m.Steps(-1); err != nil && err != migrate.ErrNoChange {
+		return fmt.Errorf("failed to rollback migration: %w", err)
 	}
 
-	cmd := exec.Command("migrate", "create", "-ext", "sql", "-dir", "migrations", "-seq", name)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	slog.Info("Migration rolled back successfully")
+	return nil
 }
 
-// MigrateForce forces the database to a specific version (use carefully)
 func MigrateForce(version string) error {
-	if err := LoadEnv(); err != nil {
+	m, err := createMigrator()
+	if err != nil {
 		return err
 	}
+	defer m.Close()
 
-	if version == "" {
-		return fmt.Errorf("version is required")
+	versionInt := 0
+	if _, err := fmt.Sscanf(version, "%d", &versionInt); err != nil {
+		return fmt.Errorf("invalid version format: %w", err)
 	}
 
-	dbURL := GetDBURL()
-	cmd := exec.Command("migrate", "-path", "migrations", "-database", dbURL, "force", version)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	if err := m.Force(versionInt); err != nil {
+		return fmt.Errorf("failed to force migration to version %s: %w", version, err)
+	}
+
+	slog.Info("Migration forced successfully", "version", version)
+	return nil
 }
 
 func MigrateVersion() error {
-	if err := LoadEnv(); err != nil {
+	m, err := createMigrator()
+	if err != nil {
 		return err
 	}
+	defer m.Close()
 
-	dbURL := GetDBURL()
-	cmd := exec.Command("migrate", "-path", "migrations", "-database", dbURL, "version")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	version, dirty, err := m.Version()
+	if err != nil {
+		return fmt.Errorf("failed to get migration version: %w", err)
+	}
+
+	status := "clean"
+	if dirty {
+		status = "dirty"
+	}
+
+	slog.Info("Current migration version", "version", version, "status", status)
+	fmt.Printf("Current version: %d (%s)\n", version, status)
+	return nil
 }
 
-// MigrateDrop drops the entire database (use with extreme caution)
 func MigrateDrop() error {
-	if err := LoadEnv(); err != nil {
+	m, err := createMigrator()
+	if err != nil {
 		return err
 	}
+	defer m.Close()
 
-	dbURL := GetDBURL()
-	cmd := exec.Command("migrate", "-path", "migrations", "-database", dbURL, "drop", "-f")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	if err := m.Drop(); err != nil {
+		return fmt.Errorf("failed to drop database: %w", err)
+	}
+
+	slog.Info("Database dropped successfully")
+	return nil
 }
 
 func MigrateReset() error {
@@ -140,10 +186,9 @@ func getEnv(key, defaultValue string) string {
 }
 
 var (
-	migrate        = flag.Bool("migrate", false, "Run database migrations and exit")
+	migrateUp      = flag.Bool("migrate", false, "Run database migrations and exit")
 	migrateDown    = flag.Bool("migrate-down", false, "Roll back one migration and exit")
 	migrateReset   = flag.Bool("migrate-reset", false, "Reset all migrations and exit")
-	migrateCreate  = flag.String("migrate-create", "", "Create new migration with given name and exit")
 	migrateForce   = flag.String("migrate-force", "", "Force database to specific version and exit")
 	migrateVersion = flag.Bool("migrate-version", false, "Show current migration version and exit")
 	migrateDrop    = flag.Bool("migrate-drop", false, "Drop entire database and exit (DANGEROUS)")
@@ -153,8 +198,7 @@ var (
 func main() {
 	flag.Parse()
 
-	
-	if *migrate {
+	if *migrateUp {
 		if err := MigrateUp(); err != nil {
 			slog.Error("Migration failed", "error", err)
 			os.Exit(1)
@@ -178,15 +222,6 @@ func main() {
 			os.Exit(1)
 		}
 		slog.Info("Migration reset completed successfully")
-		return
-	}
-
-	if *migrateCreate != "" {
-		if err := MigrateCreate(*migrateCreate); err != nil {
-			slog.Error("Migration create failed", "error", err)
-			os.Exit(1)
-		}
-		slog.Info("Migration files created successfully", "name", *migrateCreate)
 		return
 	}
 
@@ -224,13 +259,11 @@ func main() {
 		return
 	}
 
-	
 	if err := LoadEnv(); err != nil {
 		slog.Error("Failed to load environment", "error", err)
 		os.Exit(1)
 	}
 
-	
 	if *autoMigrate {
 		slog.Info("Running auto-migration...")
 		if err := MigrateUp(); err != nil {
@@ -240,33 +273,28 @@ func main() {
 		slog.Info("Auto-migration completed successfully")
 	}
 
-	
 	if err := db.InitDB(); err != nil {
 		slog.Error("Failed to initialize database", "error", err)
 		os.Exit(1)
 	}
 	defer db.Close()
 
-	
 	if err := queue.InitQueue(); err != nil {
 		slog.Error("Failed to initialize task queue", "error", err)
 		os.Exit(1)
 	}
 	defer queue.Close()
 
-	
 	if err := security.InitSecurity(); err != nil {
 		slog.Error("Failed to initialize security features", "error", err)
 		os.Exit(1)
 	}
 
-	
 	if err := config.InitFireStore(); err != nil {
 		slog.Error("Failed to initialize Firebase:", slog.Any("err", err))
 	}
 	defer config.CloseFirebaseConnection()
 
-	
 	if err := notification.InitNotificationService(); err != nil {
 		slog.Error("Failed to initialize notification:", slog.Any("err", err))
 	}
