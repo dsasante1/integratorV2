@@ -68,23 +68,36 @@ jobs:
         echo "📤 Copying binary to VPS..."
         scp -i ~/.ssh/deploy_key -P 2222 -o StrictHostKeyChecking=no \
           integrator_backend deployer@${{ secrets.VPS_HOST }}:/opt/integrator_backend/
-        echo "Binary copied successfully"
+        echo "Binary copied successfully (migrations embedded)"
     
-    - name: Copy migration files to VPS
+    - name: Ensure environment file exists
       run: |
-        echo "📤 Copying migration files..."
-        # Copy migrations directory if it exists
-        if [ -d "migrations" ]; then
-          ssh -i ~/.ssh/deploy_key -p 2222 -o StrictHostKeyChecking=no \
-            deployer@${{ secrets.VPS_HOST }} \
-            'mkdir -p /opt/integrator_backend/migrations'
-          scp -i ~/.ssh/deploy_key -P 2222 -o StrictHostKeyChecking=no \
-            -r migrations/* deployer@${{ secrets.VPS_HOST }}:/opt/integrator_backend/migrations/
-          echo "Migration files copied"
-        else
-          echo "No migrations directory found"
-        fi
-  
+        echo "🔧 Checking environment configuration..."
+        ssh -i ~/.ssh/deploy_key -p 2222 -o StrictHostKeyChecking=no \
+          deployer@${{ secrets.VPS_HOST }} \
+          'echo "Checking for .env file..."
+           if [ ! -f "/opt/integrator_backend/.env" ]; then
+             echo "❌ .env file missing! Creating it..."
+           else
+             echo "✅ .env file exists, updating it..."
+           fi
+           
+           # Always create/update the .env file to ensure it has correct values
+           cat > /opt/integrator_backend/.env << "ENVEOF"
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=integrator_user
+DB_PASSWORD=simplepassword123
+DB_NAME=integrator_backend
+PORT=8080
+ENV=production
+ENVEOF
+           
+           chmod 644 /opt/integrator_backend/.env
+           echo "✅ .env file configured"
+           echo "File contents:"
+           cat /opt/integrator_backend/.env'
+    
     - name: Set binary permissions and prepare for deployment
       run: |
         echo "🔧 Setting up binary permissions..."
@@ -108,11 +121,9 @@ jobs:
         ssh -i ~/.ssh/deploy_key -p 2222 -o StrictHostKeyChecking=no \
           deployer@${{ secrets.VPS_HOST }} \
           'cd /opt/integrator_backend && 
-           echo "Running migrations..."
+           echo "Running embedded migrations..."
            ./integrator_backend -migrate || {
              echo "❌ Migration failed"
-             echo "Checking if migrate CLI tool is installed..."
-             which migrate || echo "migrate CLI not found - install with: curl -L https://github.com/golang-migrate/migrate/releases/download/v4.17.0/migrate.linux-amd64.tar.gz | tar xvz && sudo mv migrate /usr/local/bin/"
              exit 1
            }
            echo "✅ Migrations completed"
@@ -143,9 +154,11 @@ jobs:
              sudo journalctl -u integrator_backend.service --no-pager -n 30 || true
              echo "=== Binary info ==="
              ls -la /opt/integrator_backend/integrator_backend || true
+             echo "=== Environment check ==="
+             ls -la /opt/integrator_backend/.env || true
              echo "=== Manual test ==="
              echo "Testing binary manually for 5 seconds..."
-             timeout 5s /opt/integrator_backend/integrator_backend || echo "Binary test completed (exit code: $?)"
+             cd /opt/integrator_backend && timeout 5s ./integrator_backend || echo "Binary test completed (exit code: $?)"
              exit 1
            fi'
     
@@ -157,10 +170,9 @@ jobs:
           'echo "Waiting for application to fully start..."
            sleep 5
            echo "Testing application endpoint..."
-           curl -f http://localhost:8080/integrator/api/v1/health-check || {
-             echo "❌ Health check failed or endpoint not available"
-             echo "This might be normal if no health check endpoint exists"
-           }
+           curl -s http://localhost:8080/ | head -1 || echo "No response from root endpoint"
+           echo "Testing API endpoint (expecting auth error)..."
+           curl -s http://localhost:8080/integrator/api/v1/health-check | head -1 || echo "No response from API endpoint"
            echo "✅ Application appears to be running"'
     
     - name: Cleanup old backups (keep last 5)
