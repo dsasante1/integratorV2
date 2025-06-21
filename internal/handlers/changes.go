@@ -434,7 +434,7 @@ func GetSnapshotDiff(c echo.Context) error {
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "fetch snapshot diff failed: "+err.Error())
 	}
-
+	//TODO address this issue
 	// data, err := utils.HandleDiffResponse(result)
 
 	// if err != nil {
