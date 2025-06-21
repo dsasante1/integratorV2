@@ -901,7 +901,6 @@ func GetSnapshotDiff(collectionID string, snapshotID int64) (DiffResponse, error
 	endpointSet := make(map[string]bool)
 
 	for _, change := range changes {
-		enhanceChangeDetail(&change)
 
 		oldValue, oldErr := extractValueByPath(oldSnapshot.Content, change.Path, change.ChangeType == "added")
 		if oldErr != nil && change.ChangeType != "added" {
@@ -920,6 +919,8 @@ func GetSnapshotDiff(collectionID string, snapshotID int64) (DiffResponse, error
 			slog.Error("skipping change due to extraction failures", "path", change.Path, "changeType", change.ChangeType)
 			continue
 		}
+		change.Snapshot = newSnapshot.Content
+		enhanceChangeDetail(&change)
 
 		diffDetail := DiffDetail{
 			ChangeDetail: change,
@@ -1124,13 +1125,11 @@ func GetFilteredSnapshotDiff(collectionID string, snapshotID int64, req DiffRequ
 		diffCache.mu.Unlock()
 	}
 
-	// Apply filters
 	filteredChanges := filterChanges(baseResponse.Changes, req)
 	
-	// Sort changes
+
 	sortChanges(filteredChanges, req.SortBy, req.SortOrder)
 	
-	// Apply grouping if requested
 	var groups []GroupInfo
 	var paginatedChanges []DiffDetail
 	totalItems := len(filteredChanges)
