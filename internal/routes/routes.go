@@ -48,6 +48,7 @@ func SetupRoutes(api *echo.Group) {
 	collections.GET("/:collectionId/changes/summary/:oldSnapshot/:newSnapshot", handlers.GetChangeSummary)
 	
 	// List changes with filtering
+	// display recent changes
 	collections.GET("/:collectionId/changes", handlers.GetChanges)
 	
 	// Hierarchical view

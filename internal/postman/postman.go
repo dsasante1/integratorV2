@@ -165,14 +165,11 @@ func ComparePostmanSnapshots(old, new json.RawMessage, opts *CompareOptions) ([]
 		changeCount: 0,
 	}
 
-	// First check for structural changes at ANY level
 	if hasStructuralChanges(ctx, "", oldData, newData) {
-		// If structural changes exist, process ONLY structural changes
 		processStructuralChanges(ctx, "", oldData, newData, 0)
 		return ctx.changes, nil
 	}
 
-	// No structural changes anywhere, proceed with content comparison
 	compareRecursive(ctx, "", oldData, newData, 0)
 	return ctx.changes, nil
 }
@@ -801,7 +798,6 @@ func hasStructuralChanges(ctx *compareContext, path string, old, new interface{}
 	newObj, newIsObj := new.(map[string]interface{})
 	
 	if oldIsObj && newIsObj {
-		// Check for added fields (in new but not in old)
 		for key := range newObj {
 			if shouldIgnorePath(joinPath(path, key), ctx.opts.IgnorePaths) {
 				continue
@@ -811,7 +807,6 @@ func hasStructuralChanges(ctx *compareContext, path string, old, new interface{}
 			}
 		}
 		
-		// Check for deleted fields (in old but not in new)
 		for key := range oldObj {
 			if shouldIgnorePath(joinPath(path, key), ctx.opts.IgnorePaths) {
 				continue
@@ -821,7 +816,6 @@ func hasStructuralChanges(ctx *compareContext, path string, old, new interface{}
 			}
 		}
 		
-		// Recursively check nested objects for structural changes
 		for key := range oldObj {
 			if newVal, exists := newObj[key]; exists {
 				newPath := joinPath(path, key)
@@ -841,7 +835,6 @@ func hasStructuralChanges(ctx *compareContext, path string, old, new interface{}
 	newArr, newIsArr := new.([]interface{})
 	
 	if oldIsArr && newIsArr {
-		// For Postman item arrays, check by comparing items by key
 		if isPostmanItemArray(path) {
 			oldKeys := make(map[string]bool)
 			newKeys := make(map[string]bool)
@@ -881,11 +874,9 @@ func hasStructuralChanges(ctx *compareContext, path string, old, new interface{}
 				}
 			}
 		} else {
-			// For regular arrays, length difference means structural change
 			if len(oldArr) != len(newArr) {
 				return true
 			}
-			// Recursively check each element
 			for i := 0; i < len(oldArr); i++ {
 				if hasStructuralChanges(ctx, fmt.Sprintf("%s[%d]", path, i), oldArr[i], newArr[i]) {
 					return true
@@ -964,10 +955,8 @@ func processStructuralChanges(ctx *compareContext, path string, old, new interfa
 				
 				for i := 0; i < maxLen; i++ {
 					if i >= len(oldArr) {
-						// Element added
 						addChange(ctx, "added", fmt.Sprintf("%s[%d]", path, i), newArr[i])
 					} else if i >= len(newArr) {
-						// Element deleted
 						addChange(ctx, "deleted", fmt.Sprintf("%s[%d]", path, i), oldArr[i])
 					}
 				}
@@ -1000,7 +989,6 @@ func processPostmanItemStructuralChanges(ctx *compareContext, path string, oldAr
 		}
 	}
 	
-	// Build map of new items by key
 	newMap := make(map[string]interface{})
 	newIndices := make(map[string]int)
 	
@@ -1014,7 +1002,6 @@ func processPostmanItemStructuralChanges(ctx *compareContext, path string, oldAr
 		}
 	}
 	
-	// Report deletions
 	for key, oldItem := range oldMap {
 		if _, exists := newMap[key]; !exists {
 			indexPath := fmt.Sprintf("%s[%d]", path, oldIndices[key])
@@ -1022,7 +1009,6 @@ func processPostmanItemStructuralChanges(ctx *compareContext, path string, oldAr
 		}
 	}
 	
-	// Report additions
 	for key, newItem := range newMap {
 		if _, exists := oldMap[key]; !exists {
 			indexPath := fmt.Sprintf("%s[%d]", path, newIndices[key])

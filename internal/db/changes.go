@@ -10,7 +10,45 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"strconv"
 )
+
+type PostmanCollection struct {
+	Collection Collections `json:"collection"`
+}
+
+type Collections struct {
+	Info Info   `json:"info"`
+	Item []Item `json:"item"`
+}
+
+type Info struct {
+	Name        string `json:"name"`
+	Schema      string `json:"schema"`
+	PostmanID   string `json:"_postman_id"`
+}
+
+
+type Item struct {
+	Name     string    `json:"name"`
+	Request  Request   `json:"request"`
+	Response []Response `json:"response,omitempty"`
+}
+
+
+type Request struct {
+	URL    interface{} `json:"url"`
+	Method string      `json:"method"`
+	Body   interface{} `json:"body,omitempty"`
+	Header []interface{} `json:"header,omitempty"`
+}
+
+type Response struct {
+	Body   string `json:"body"`
+	Code   int    `json:"code"`
+	Name   string `json:"name"`
+	Status string `json:"status"`
+}
 
  
 type ChangeDetail struct {
@@ -28,6 +66,7 @@ type ChangeDetail struct {
 	PathSegments   []string   `json:"path_segments"`
 	EndpointName   string     `json:"endpoint_name,omitempty"`
 	ResourceType   string     `json:"resource_type,omitempty"`
+	Snapshot       json.RawMessage `json:"-"`
 }
 
  
@@ -360,13 +399,12 @@ func GetChanges(filter ChangeFilter) ([]*ChangeDetail, int, error) {
 	var args []interface{}
 	argCount := 0
 
-	 
-	conditions = append(conditions, fmt.Sprintf("collection_id = $%d", argCount+1))
+	conditions = append(conditions, fmt.Sprintf("c.collection_id = $%d", argCount+1))
 	args = append(args, filter.CollectionID)
 	argCount++
 
 	if filter.SnapshotID != nil {
-		conditions = append(conditions, fmt.Sprintf("new_snapshot_id = $%d", argCount+1))
+		conditions = append(conditions, fmt.Sprintf("c.new_snapshot_id = $%d", argCount+1))
 		args = append(args, *filter.SnapshotID)
 		argCount++
 	}
@@ -377,31 +415,31 @@ func GetChanges(filter ChangeFilter) ([]*ChangeDetail, int, error) {
 			placeholders[i] = fmt.Sprintf("$%d", argCount+1+i)
 			args = append(args, ct)
 		}
-		conditions = append(conditions, fmt.Sprintf("change_type IN (%s)", strings.Join(placeholders, ",")))
+		conditions = append(conditions, fmt.Sprintf("c.change_type IN (%s)", strings.Join(placeholders, ",")))
 		argCount += len(filter.ChangeTypes)
 	}
 
 	if filter.PathPattern != "" {
-		conditions = append(conditions, fmt.Sprintf("path LIKE $%d", argCount+1))
+		conditions = append(conditions, fmt.Sprintf("c.path LIKE $%d", argCount+1))
 		args = append(args, "%"+filter.PathPattern+"%")
 		argCount++
 	}
 
 	if filter.StartTime != nil {
-		conditions = append(conditions, fmt.Sprintf("created_at >= $%d", argCount+1))
+		conditions = append(conditions, fmt.Sprintf("c.created_at >= $%d", argCount+1))
 		args = append(args, *filter.StartTime)
 		argCount++
 	}
 
 	if filter.EndTime != nil {
-		conditions = append(conditions, fmt.Sprintf("created_at <= $%d", argCount+1))
+		conditions = append(conditions, fmt.Sprintf("c.created_at <= $%d", argCount+1))
 		args = append(args, *filter.EndTime)
 		argCount++
 	}
 
 	whereClause := strings.Join(conditions, " AND ")
 
-	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM changes WHERE %s", whereClause)
+	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM changes c WHERE %s", whereClause)
 	var totalCount int
 	err := DB.QueryRow(countQuery, args...).Scan(&totalCount)
 	if err != nil {
@@ -410,11 +448,13 @@ func GetChanges(filter ChangeFilter) ([]*ChangeDetail, int, error) {
 
 	query := fmt.Sprintf(`
 		SELECT 
-			id, collection_id, old_snapshot_id, new_snapshot_id,
-			change_type, path, modification, created_at
-		FROM changes
+			c.id, c.collection_id, c.old_snapshot_id, c.new_snapshot_id,
+			c.change_type, c.path, c.modification, c.created_at,
+			s_new.content AS snapshot
+		FROM changes c
+		LEFT JOIN snapshots s_new ON c.new_snapshot_id = s_new.id
 		WHERE %s
-		ORDER BY created_at DESC, id DESC
+		ORDER BY c.created_at DESC, c.id DESC
 		LIMIT $%d OFFSET $%d
 	`, whereClause, argCount+1, argCount+2)
 
@@ -429,21 +469,41 @@ func GetChanges(filter ChangeFilter) ([]*ChangeDetail, int, error) {
 	var changes []*ChangeDetail
 	for rows.Next() {
 		change := &ChangeDetail{}
+		
+		var oldSnapshotID, newSnapshotID sql.NullInt64
+		var snapshot sql.NullString
+		
 		err := rows.Scan(
 			&change.ID,
 			&change.CollectionID,
-			&change.OldSnapshotID,
-			&change.NewSnapshotID,
+			&oldSnapshotID,
+			&newSnapshotID,
 			&change.ChangeType,
 			&change.Path,
 			&change.Modification,
 			&change.CreatedAt,
+			&snapshot,
 		)
 		if err != nil {
 			return nil, 0, fmt.Errorf("failed to scan change: %w", err)
 		}
 
-		 
+		if oldSnapshotID.Valid {
+			id := oldSnapshotID.Int64
+			change.OldSnapshotID = &id
+		}
+		if newSnapshotID.Valid {
+			id := newSnapshotID.Int64
+			change.NewSnapshotID = id
+		}
+		if snapshot.Valid {
+			change.Snapshot = json.RawMessage(snapshot.String)
+		}
+
+		if err = rows.Err(); err != nil {
+			return nil, 0, fmt.Errorf("error iterating rows: %w", err)
+		}
+
 		enhanceChangeDetail(change)
 		changes = append(changes, change)
 	}
@@ -579,7 +639,7 @@ func enhanceChangeDetail(change *ChangeDetail) {
 	change.HumanPath = generateHumanPath(change.PathSegments)
 	
 	 
-	change.EndpointName = extractEndpointName(change.Path, change.Modification)
+	change.EndpointName = getEndPointName(change.Snapshot, change.Path)
 	change.ResourceType = extractResourceType(change.Path)
 }
 
@@ -660,6 +720,33 @@ func generateHumanPath(segments []string) string {
 	return strings.Join(parts, " → ")
 }
 
+func getEndPointName(data json.RawMessage, path string) string {
+	var collection PostmanCollection
+	
+	err := json.Unmarshal(data, &collection)
+	if err != nil {
+		return ""
+	}
+	
+	re := regexp.MustCompile(`collection\.item\[(\d+)\]`)
+	matches := re.FindStringSubmatch(path)
+	
+	if len(matches) < 2 {
+		return ""
+	}
+	
+	itemIndex, err := strconv.Atoi(matches[1])
+	if err != nil {
+		return ""
+	}
+	
+	if itemIndex < 0 || itemIndex >= len(collection.Collection.Item) {
+		return ""
+	}
+	
+	return collection.Collection.Item[itemIndex].Name
+}
+
 func extractEndpointName(path string, modification *string) string {
 	 
 	if strings.Contains(path, "item[") {
@@ -679,6 +766,7 @@ func extractEndpointName(path string, modification *string) string {
 	}
 	return ""
 }
+
 
 func extractResourceType(path string) string {
 	if strings.Contains(path, ".request") {
