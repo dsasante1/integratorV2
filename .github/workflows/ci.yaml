@@ -69,7 +69,33 @@ jobs:
         scp -i ~/.ssh/deploy_key -P 2222 -o StrictHostKeyChecking=no \
           integrator_backend deployer@${{ secrets.VPS_HOST }}:/opt/integrator_backend/
         echo "Binary copied successfully (migrations embedded)"
-        
+    
+    - name: Ensure environment file exists
+      run: |
+        echo "🔧 Checking environment configuration..."
+        ssh -i ~/.ssh/deploy_key -p 2222 -o StrictHostKeyChecking=no \
+          deployer@${{ secrets.VPS_HOST }} \
+          'echo "Checking for .env file..."
+           if [ ! -f "/opt/integrator_backend/.env" ]; then
+             echo "❌ .env file missing! Creating it..."
+           else
+             echo "✅ .env file exists, updating it..."
+           fi
+           
+           # Create the .env file with correct values
+           echo "DB_HOST=localhost" > /opt/integrator_backend/.env
+           echo "DB_PORT=5432" >> /opt/integrator_backend/.env
+           echo "DB_USER=integrator_user" >> /opt/integrator_backend/.env
+           echo "DB_PASSWORD=simplepassword123" >> /opt/integrator_backend/.env
+           echo "DB_NAME=integrator_backend" >> /opt/integrator_backend/.env
+           echo "PORT=8080" >> /opt/integrator_backend/.env
+           echo "ENV=production" >> /opt/integrator_backend/.env
+           
+           chmod 644 /opt/integrator_backend/.env
+           echo "✅ .env file configured"
+           echo "File contents:"
+           cat /opt/integrator_backend/.env'
+    
     - name: Set binary permissions and prepare for deployment
       run: |
         echo "🔧 Setting up binary permissions..."
@@ -118,6 +144,8 @@ jobs:
            if sudo systemctl is-active --quiet integrator_backend.service; then
              echo "✅ Service is active and running"
              sudo systemctl status integrator_backend.service --no-pager -l
+             echo ""
+             echo "✅ Deployment successful!"
            else
              echo "❌ Service is not running"
              echo "=== Service status ==="
@@ -128,9 +156,9 @@ jobs:
              ls -la /opt/integrator_backend/integrator_backend || true
              echo "=== Environment check ==="
              ls -la /opt/integrator_backend/.env || true
-             echo "=== Manual test ==="
-             echo "Testing binary manually for 5 seconds..."
-             cd /opt/integrator_backend && timeout 5s ./integrator_backend || echo "Binary test completed (exit code: $?)"
+             echo "=== Manual test (may show port conflict - this is normal) ==="
+             echo "Testing binary manually for 3 seconds..."
+             cd /opt/integrator_backend && timeout 3s ./integrator_backend || echo "Manual test completed (exit code: $?) - Port conflict expected if service is running"
              exit 1
            fi'
     
