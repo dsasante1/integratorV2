@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"integratorV2/internal/config"
 	"integratorV2/internal/db"
+	"integratorV2/internal/migrations"
 	"integratorV2/internal/notification"
 	"integratorV2/internal/queue"
 	"integratorV2/internal/routes"
@@ -19,19 +20,16 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/golang-migrate/migrate/v4"
-	_ "github.com/golang-migrate/migrate/v4/database/postgres"
-	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 )
 
-// Embed migration files into the binary
+
 //go:embed migrations/*.sql
 var migrationFiles embed.FS
 
-//TODO handle config properly
+// LoadEnv loads environment variables from .env file
 func LoadEnv() error {
 	if err := godotenv.Load(); err != nil {
 		slog.Warn("Warning: .env file not found", "error", err)
@@ -39,151 +37,6 @@ func LoadEnv() error {
 	return nil
 }
 
-func GetDBURL() string {
-	dbHost := getEnv("DB_HOST", "localhost")
-	dbPort := getEnv("DB_PORT", "5432")
-	dbUser := getEnv("DB_USER", "postgres")
-	dbPassword := getEnv("DB_PASSWORD", "")
-	dbName := getEnv("DB_NAME", "mydb")
-
-	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
-		dbUser, dbPassword, dbHost, dbPort, dbName)
-}
-
-// Create a migrate instance using embedded files
-func createMigrator() (*migrate.Migrate, error) {
-	if err := LoadEnv(); err != nil {
-		return nil, err
-	}
-
-	// Create source from embedded files
-	sourceDriver, err := iofs.New(migrationFiles, "migrations")
-	if err != nil {
-		return nil, fmt.Errorf("failed to create migration source: %w", err)
-	}
-
-	dbURL := GetDBURL()
-	
-	// Create migrator
-	m, err := migrate.NewWithSourceInstance("iofs", sourceDriver, dbURL)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create migrator: %w", err)
-	}
-
-	return m, nil
-}
-
-func MigrateUp() error {
-	m, err := createMigrator()
-	if err != nil {
-		return err
-	}
-	defer m.Close()
-
-	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
-		return fmt.Errorf("failed to run migrations: %w", err)
-	}
-
-	if err == migrate.ErrNoChange {
-		slog.Info("No new migrations to apply")
-	} else {
-		slog.Info("Migrations applied successfully")
-	}
-
-	return nil
-}
-
-func MigrateDown() error {
-	m, err := createMigrator()
-	if err != nil {
-		return err
-	}
-	defer m.Close()
-
-	if err := m.Steps(-1); err != nil && err != migrate.ErrNoChange {
-		return fmt.Errorf("failed to rollback migration: %w", err)
-	}
-
-	slog.Info("Migration rolled back successfully")
-	return nil
-}
-
-func MigrateForce(version string) error {
-	m, err := createMigrator()
-	if err != nil {
-		return err
-	}
-	defer m.Close()
-
-	versionInt := 0
-	if _, err := fmt.Sscanf(version, "%d", &versionInt); err != nil {
-		return fmt.Errorf("invalid version format: %w", err)
-	}
-
-	if err := m.Force(versionInt); err != nil {
-		return fmt.Errorf("failed to force migration to version %s: %w", version, err)
-	}
-
-	slog.Info("Migration forced successfully", "version", version)
-	return nil
-}
-
-func MigrateVersion() error {
-	m, err := createMigrator()
-	if err != nil {
-		return err
-	}
-	defer m.Close()
-
-	version, dirty, err := m.Version()
-	if err != nil {
-		return fmt.Errorf("failed to get migration version: %w", err)
-	}
-
-	status := "clean"
-	if dirty {
-		status = "dirty"
-	}
-
-	slog.Info("Current migration version", "version", version, "status", status)
-	fmt.Printf("Current version: %d (%s)\n", version, status)
-	return nil
-}
-
-func MigrateDrop() error {
-	m, err := createMigrator()
-	if err != nil {
-		return err
-	}
-	defer m.Close()
-
-	if err := m.Drop(); err != nil {
-		return fmt.Errorf("failed to drop database: %w", err)
-	}
-
-	slog.Info("Database dropped successfully")
-	return nil
-}
-
-func MigrateReset() error {
-	if err := MigrateDrop(); err != nil {
-		return fmt.Errorf("failed to drop database: %w", err)
-	}
-
-	if err := MigrateUp(); err != nil {
-		return fmt.Errorf("failed to run migrations after reset: %w", err)
-	}
-
-	return nil
-}
-
-func getEnv(key, defaultValue string) string {
-	value := os.Getenv(key)
-	if value == "" {
-		return defaultValue
-	}
-	return value
-}
 
 var (
 	migrateUp      = flag.Bool("migrate", false, "Run database migrations and exit")
@@ -199,7 +52,7 @@ func main() {
 	flag.Parse()
 
 	if *migrateUp {
-		if err := MigrateUp(); err != nil {
+		if err := migrations.Up(migrationFiles); err != nil {
 			slog.Error("Migration failed", "error", err)
 			os.Exit(1)
 		}
@@ -208,7 +61,7 @@ func main() {
 	}
 
 	if *migrateDown {
-		if err := MigrateDown(); err != nil {
+		if err := migrations.Down(migrationFiles); err != nil {
 			slog.Error("Migration down failed", "error", err)
 			os.Exit(1)
 		}
@@ -217,7 +70,7 @@ func main() {
 	}
 
 	if *migrateReset {
-		if err := MigrateReset(); err != nil {
+		if err := migrations.Reset(migrationFiles); err != nil {
 			slog.Error("Migration reset failed", "error", err)
 			os.Exit(1)
 		}
@@ -226,7 +79,7 @@ func main() {
 	}
 
 	if *migrateForce != "" {
-		if err := MigrateForce(*migrateForce); err != nil {
+		if err := migrations.Force(migrationFiles, *migrateForce); err != nil {
 			slog.Error("Migration force failed", "error", err)
 			os.Exit(1)
 		}
@@ -235,7 +88,7 @@ func main() {
 	}
 
 	if *migrateVersion {
-		if err := MigrateVersion(); err != nil {
+		if err := migrations.Version(migrationFiles); err != nil {
 			slog.Error("Migration version failed", "error", err)
 			os.Exit(1)
 		}
@@ -251,7 +104,7 @@ func main() {
 			return
 		}
 
-		if err := MigrateDrop(); err != nil {
+		if err := migrations.Drop(migrationFiles); err != nil {
 			slog.Error("Migration drop failed", "error", err)
 			os.Exit(1)
 		}
@@ -266,7 +119,7 @@ func main() {
 
 	if *autoMigrate {
 		slog.Info("Running auto-migration...")
-		if err := MigrateUp(); err != nil {
+		if err := migrations.Up(migrationFiles); err != nil {
 			slog.Error("Auto-migration failed", "error", err)
 			os.Exit(1)
 		}
