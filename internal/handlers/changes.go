@@ -417,7 +417,7 @@ func GetSnapshotDiff(c echo.Context) error {
 	}
 
 	if req.PageSize == 0 {
-		req.PageSize = 50 // Default page size
+		req.PageSize = 10 // Default page size
 	}
 	if req.Page == 0 {
 		req.Page = 1
