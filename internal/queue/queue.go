@@ -25,7 +25,7 @@ var (
 	inspector *asynq.Inspector
 )
 
-// InitQueue initializes the Redis connection for Asynq
+
 func InitQueue() error {
 	redisAddr := os.Getenv("REDIS_ADDR")
 	if redisAddr == "" {

@@ -20,7 +20,7 @@ func InitKMSRotation(keyID string) error {
 	}
 
 	if !exists {
-		// Create new rotation task
+		
 		nextRotation := time.Now().Add(3 * 30 * 24 * time.Hour) // 3 months
 		_, err = DB.Exec(`
 			INSERT INTO kms_key_rotation (key_id, next_rotation_at)

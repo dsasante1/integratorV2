@@ -21,7 +21,7 @@ func NewMigrator(migrationFiles embed.FS) (*migrate.Migrate, error) {
 
 	dbURL := GetDatabaseURL()
 	
-	// Create migrator
+	
 	m, err := migrate.NewWithSourceInstance("iofs", sourceDriver, dbURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create migrator: %w", err)

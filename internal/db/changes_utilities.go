@@ -35,7 +35,7 @@ type ImpactSummary struct {
 	Recommendation  string  `json:"recommendation"`
 }
 
-// ChangeFrequencyAnalysis tracks which paths change most frequently
+
 type ChangeFrequencyAnalysis struct {
 	CollectionID    string                     `json:"collection_id"`
 	TimeRange       TimeRange                  `json:"time_range"`
@@ -60,7 +60,7 @@ type EndpointVolatility struct {
 
 
 func AnalyzeChangeImpact(collectionID string, snapshotID int64) (*ChangeImpactAnalysis, error) {
-	// Get all changes for the snapshot
+	
 	filter := ChangeFilter{
 		CollectionID: collectionID,
 		SnapshotID:   &snapshotID,
@@ -108,9 +108,9 @@ func analyzeIndividualChange(change *ChangeDetail) *ImpactDetail {
 		Suggestions: make([]string, 0),
 	}
 	
-	// Analyze based on path and change type
+	
 	switch {
-	// Breaking changes
+	
 	case change.ChangeType == "deleted" && strings.Contains(change.Path, ".item["):
 		impact.Severity = "breaking"
 		impact.Impact = "Endpoint removed - clients using this endpoint will fail"
@@ -128,7 +128,7 @@ func analyzeIndividualChange(change *ChangeDetail) *ImpactDetail {
 		impact.Suggestions = append(impact.Suggestions, "Implement URL redirects if possible")
 		impact.Suggestions = append(impact.Suggestions, "Update all documentation and client code")
 		
-	// Security changes
+	
 	case strings.Contains(change.Path, "auth") || strings.Contains(change.Path, "authorization"):
 		impact.Severity = "security"
 		impact.Impact = "Authentication/Authorization change detected"
@@ -140,7 +140,7 @@ func analyzeIndividualChange(change *ChangeDetail) *ImpactDetail {
 		impact.Impact = "Header removed - may affect security headers"
 		impact.Suggestions = append(impact.Suggestions, "Verify no security headers were removed")
 		
-	// Data changes
+	
 	case strings.Contains(change.Path, ".body") || strings.Contains(change.Path, ".raw"):
 		impact.Severity = "data"
 		impact.Impact = "Request/Response body structure modified"
@@ -173,11 +173,11 @@ func calculateImpactSummary(analysis *ChangeImpactAnalysis) ImpactSummary {
 		TotalCosmetic: len(analysis.CosmeticChanges),
 	}
 	
-	// Calculate risk score (0-100)
+	
 	summary.RiskScore = float64(summary.TotalBreaking*40 + summary.TotalSecurity*30 + 
 		summary.TotalData*20 + summary.TotalCosmetic*1)
 	
-	// Normalize to 0-100
+	
 	totalChanges := summary.TotalBreaking + summary.TotalSecurity + summary.TotalData + summary.TotalCosmetic
 	if totalChanges > 0 {
 		summary.RiskScore = (summary.RiskScore / float64(totalChanges)) * 2

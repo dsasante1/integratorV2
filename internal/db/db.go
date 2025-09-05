@@ -36,7 +36,7 @@ func InitDB() error {
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
 
-	// Test connection
+	
 	if err := DB.Ping(); err != nil {
 		return fmt.Errorf("failed to ping database: %w", err)
 	}
@@ -45,7 +45,7 @@ func InitDB() error {
 	return nil
 }
 
-// Close closes the database connection
+
 func Close() error {
 	if DB != nil {
 		if err := DB.Close(); err != nil {

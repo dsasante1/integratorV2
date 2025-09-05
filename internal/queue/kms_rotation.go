@@ -16,19 +16,19 @@ type KMSRotationPayload struct {
 	KeyID string `json:"key_id"`
 }
 
-// ScheduleKMSRotation schedules the next KMS key rotation
+
 func ScheduleKMSRotation(keyID string) error {
 	payload := KMSRotationPayload{
 		KeyID: keyID,
 	}
 
-	// Marshal payload
+	
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("failed to marshal payload: %v", err)
 	}
 
-	// Create task
+	
 	task := asynq.NewTask(QueueKMSRotation, payloadBytes)
 
 	// Schedule task for 3 months from now

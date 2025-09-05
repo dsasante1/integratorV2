@@ -16,11 +16,11 @@ func Signup(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request"})
 	}
 
-	// Validate the entire struct
+	
 	if err := auth.Validate.Struct(&req); err != nil {
-		// Handle validation errors
+		
 		if validationErrors, ok := err.(validator.ValidationErrors); ok {
-			// Get the first validation error
+			
 			if len(validationErrors) > 0 {
 				fieldError := validationErrors[0]
 				switch fieldError.Tag() {
@@ -40,15 +40,15 @@ func Signup(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Validation failed"})
 	}
 
-	// Additional email validation (if you have custom logic)
+	
 	if err := auth.ValidateEmail(req.Email); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
-	// Create user
+	
 	user, err := auth.CreateUser(req.Email, req.Password)
 	if err != nil {
-		// Check for duplicate email error
+		
 		if strings.Contains(err.Error(), "duplicate") || strings.Contains(err.Error(), "unique") {
 			return c.JSON(http.StatusConflict, map[string]string{"error": "Email already exists"})
 		}
@@ -64,23 +64,23 @@ func Login(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request"})
 	}
 
-	// Validate the request
+	
 	if err := auth.Validate.Struct(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid email or password format"})
 	}
 
-	// Get user by email
+	
 	user, err := auth.GetUserByEmail(req.Email)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid email or password"})
 	}
 
-	// Verify password
+	
 	if err := auth.VerifyPassword(user.Password, req.Password); err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid email or password"})
 	}
 
-	// Generate token
+	
 	token, err := auth.GenerateToken(user)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to generate token"})

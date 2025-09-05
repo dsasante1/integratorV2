@@ -43,11 +43,11 @@ func GetSnapshotItems(c echo.Context) error {
 	page := getPage(c)
 	pageSize := getPageSize(c)
 
-	// Parse filtering options
+	
 	fields := c.QueryParam("fields")
 	search := c.QueryParam("search")
-	itemType := c.QueryParam("type") // "folder" or "request"
-	depth := c.QueryParam("depth")   // "shallow" or "deep" (default)
+	itemType := c.QueryParam("type") 
+	depth := c.QueryParam("depth")   
 
 	filterOptions := db.SnapshotFilterOptions{
 		Fields:   fields,
@@ -92,7 +92,7 @@ func DeleteSnapshot(c echo.Context) error {
 	if err := db.DeleteSnapshot(id); err != nil {
 		slog.Error("Failed to delete snapshot", "error", err)
 		
-		// Check if it's a foreign key constraint error
+		
 		if pqErr, ok := err.(*pq.Error); ok {
 			if pqErr.Code == "23503" { 
 				if strings.Contains(pqErr.Message, "changes_old_snapshot_id_fkey") {

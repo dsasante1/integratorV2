@@ -15,12 +15,12 @@ var (
 )
 
 func InitSecurity() {
-	// Initialize validator
+	
 	Validate = validator.New()
 	Validate.RegisterValidation("password", validatePassword)
 
-	// Initialize rate limiter
-	// 30 requests per minute per IP
+	
+	
 	rate := limiterpkg.Rate{
 		Period: 1 * 60, // 1 minute
 		Limit:  30,     // 30 requests

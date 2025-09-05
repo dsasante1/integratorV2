@@ -56,7 +56,7 @@ func (s *NotificationService) SendNotification(ctx context.Context, req *Notific
 		CreatedAt: time.Now(),
 	}
 
-	// Set expiration if TTL is provided
+	
 	if req.TTL != nil {
 		expiresAt := time.Now().Add(*req.TTL)
 		notification.ExpiresAt = &expiresAt
@@ -219,7 +219,7 @@ func (s *NotificationService) CleanupExpiredNotifications(ctx context.Context, u
 	iter := query.Documents(ctx)
 	defer iter.Stop()
 
-	// Use BulkWriter for bulk delete operations
+	
 	bulkWriter := s.db.BulkWriter(ctx)
 	defer bulkWriter.End()
 

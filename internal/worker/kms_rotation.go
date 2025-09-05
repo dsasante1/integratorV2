@@ -18,14 +18,14 @@ import (
 	"github.com/hibiken/asynq"
 )
 
-// HandleKMSRotation handles the KMS key rotation task
+
 func (w *Worker) HandleKMSRotation(ctx context.Context, t *asynq.Task) error {
 	var payload queue.KMSRotationPayload
 	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
 		return fmt.Errorf("failed to unmarshal payload: %v", err)
 	}
 
-	// Create new KMS key
+	
 	input := &kms.CreateKeyInput{
 		Description: aws.String("Auto-rotated KMS key"),
 		Tags: []types.Tag{
@@ -41,12 +41,12 @@ func (w *Worker) HandleKMSRotation(ctx context.Context, t *asynq.Task) error {
 		return fmt.Errorf("failed to create new KMS key: %v", err)
 	}
 
-	// Update environment variable with new key ID
+	
 	if err := os.Setenv("AWS_KMS_KEY_ID", *result.KeyMetadata.KeyId); err != nil {
 		return fmt.Errorf("failed to update KMS key ID: %v", err)
 	}
 
-	// Update rotation record
+	
 	nextRotation := time.Now().Add(3 * 30 * 24 * time.Hour) // 3 months
 	_, err = db.DB.Exec(`
 		UPDATE kms_key_rotation
@@ -59,7 +59,7 @@ func (w *Worker) HandleKMSRotation(ctx context.Context, t *asynq.Task) error {
 		return fmt.Errorf("failed to update rotation record: %v", err)
 	}
 
-	// Schedule next rotation
+	
 	if err := queue.ScheduleKMSRotation(*result.KeyMetadata.KeyId); err != nil {
 		return fmt.Errorf("failed to schedule next rotation: %v", err)
 	}

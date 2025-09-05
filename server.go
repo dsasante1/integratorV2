@@ -29,7 +29,7 @@ import (
 //go:embed migrations/*.sql
 var migrationFiles embed.FS
 
-// LoadEnv loads environment variables from .env file
+
 func LoadEnv() error {
 	if err := godotenv.Load(); err != nil {
 		slog.Warn("Warning: .env file not found", "error", err)
@@ -152,10 +152,10 @@ func main() {
 		slog.Error("Failed to initialize notification:", slog.Any("err", err))
 	}
 
-	// Setup Echo server
+	
 	e := echo.New()
 
-	// Middleware
+	
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 	e.Use(middleware.Gzip())
@@ -167,32 +167,32 @@ func main() {
 	e.Use(security.RateLimiter)
 	e.Use(security.ValidateEmail)
 
-	// Setup routes
+	
 	v1 := e.Group("/integrator/api/v1")
 	routes.SetupRoutes(v1)
 
-	// Create and start worker
+	
 	w := worker.NewWorker()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Start worker in a goroutine
+	
 	go func() {
 		if err := w.Start(ctx); err != nil {
 			slog.Error("Worker error", "error", err)
 		}
 	}()
 
-	// Handle graceful shutdown
+	
 	go func() {
 		sigChan := make(chan os.Signal, 1)
 		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 		<-sigChan
 
 		slog.Info("Shutting down...")
-		cancel() // Stop the worker
+		cancel() 
 
-		// Create a timeout context for shutdown
+		
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer shutdownCancel()
 
@@ -201,7 +201,7 @@ func main() {
 		}
 	}()
 
-	// Start server!!!
+	
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"

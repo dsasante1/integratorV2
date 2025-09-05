@@ -16,14 +16,14 @@ import (
 type DiffRequest struct {
 	CollectionID string `param:"collectionId"`
 	SnapshotID   string `param:"snapshotId"`
-	// Query parameters
+	
 	Search     string `query:"search"`
-	FilterType string `query:"filter_type"` // all, added, deleted, modified
-	GroupBy    string `query:"group_by"`    // none, endpoint, type
+	FilterType string `query:"filter_type"` 
+	GroupBy    string `query:"group_by"`    
 	Page       int    `query:"page"`
 	PageSize   int    `query:"page_size"`
-	SortBy     string `query:"sort_by"`     // endpoint, type, path
-	SortOrder  string `query:"sort_order"`  // asc, desc
+	SortBy     string `query:"sort_by"`     
+	SortOrder  string `query:"sort_order"`  
 }
 
 type ChangeDetail struct {
@@ -48,7 +48,7 @@ type DiffDetail struct {
 	NewValue interface{} `json:"new_value"`
 }
 
-// DiffSummary provides high-level statistics about the diff
+
 type DiffSummary struct {
 	TotalChanges     int            `json:"total_changes"`
 	ChangesByType    map[string]int `json:"changes_by_type"`
@@ -257,7 +257,7 @@ func ExportChanges(c echo.Context) error {
 	 
 	filter := db.ChangeFilter{
 		CollectionID: collectionID,
-		Limit:        10000, // Get all for export
+		Limit:        10000, 
 	}
 	
 	if snapshot := c.QueryParam("snapshot"); snapshot != "" {
@@ -281,10 +281,10 @@ func ExportChanges(c echo.Context) error {
 		c.Response().Header().Set("Content-Type", "text/csv")
 		c.Response().Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"changes_%s.csv\"", collectionID))
 		
-		// Write CSV header
+		
 		fmt.Fprintln(c.Response().Writer, "ID,Type,Path,Human Path,Endpoint,Resource Type,Created At,Modification")
 		
-		// Write data rows
+		
 		for _, change := range changes {
 			mod := ""
 			if change.Modification != nil {
@@ -307,7 +307,7 @@ func ExportChanges(c echo.Context) error {
 		c.Response().Header().Set("Content-Type", "text/markdown")
 		c.Response().Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"changes_%s.md\"", collectionID))
 		
-		// Group by endpoint for markdown
+		
 		endpointChanges, _ := db.GetChangesByEndpoint(collectionID, *filter.SnapshotID)
 		
 		fmt.Fprintf(c.Response().Writer, "# Change Report for Collection %s\n\n", collectionID)
@@ -417,7 +417,7 @@ func GetSnapshotDiff(c echo.Context) error {
 	}
 
 	if req.PageSize == 0 {
-		req.PageSize = 10 // Default page size
+		req.PageSize = 10 
 	}
 	if req.Page == 0 {
 		req.Page = 1

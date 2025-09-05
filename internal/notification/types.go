@@ -22,7 +22,7 @@ type NotificationRequest struct {
 	Title   string                 `json:"title"`
 	Message string                 `json:"message"`
 	Data    map[string]interface{} `json:"data,omitempty"`
-	TTL     *time.Duration         `json:"ttl,omitempty"` // Time to live
+	TTL     *time.Duration         `json:"ttl,omitempty"` 
 }
 
 type NotificationFilter struct {

@@ -81,17 +81,17 @@ func StoreCollection(id, name string, user_id int64) error {
 }
 
 func StorePostmanAPIKey(userID int64, apiKey string) error {
-	// Encrypt the API key
+	
 	encryptedKey, err := config.EncryptAPIKey(apiKey)
 	if err != nil {
 		slog.Error("Failed to encrypt API key", "error", err, "user_id", userID)
 		return fmt.Errorf("failed to encrypt API key: %v", err)
 	}
 
-	// Calculate expiration date (90 days from now)
+	
 	expiresAt := time.Now().Add(90 * 24 * time.Hour)
 
-	// Store encrypted key
+	
 	_, err = DB.Exec(`
 		INSERT INTO postman_api_keys (
 			user_id, encrypted_key, key_version,
@@ -127,7 +127,7 @@ func GetPostmanAPIKey(userID int64) (string, error) {
 		return "", fmt.Errorf("failed to get API key: %v", err)
 	}
 
-	// Decrypt the API key
+	
 	apiKey, err := config.DecryptAPIKey(encryptedKey)
 	if err != nil {
 		slog.Error("Failed to decrypt API key", "error", err, "user_id", userID)
@@ -139,17 +139,17 @@ func GetPostmanAPIKey(userID int64) (string, error) {
 }
 
 func RotateAPIKey(userID int64, newAPIKey string) error {
-	// Encrypt the new API key
+	
 	encryptedKey, err := config.EncryptAPIKey(newAPIKey)
 	if err != nil {
 		slog.Error("Failed to encrypt new API key", "error", err, "user_id", userID)
 		return fmt.Errorf("failed to encrypt API key: %v", err)
 	}
 
-	// Calculate new expiration date
+	
 	expiresAt := time.Now().Add(90 * 24 * time.Hour)
 
-	// Start transaction
+	
 	tx, err := DB.Begin()
 	if err != nil {
 		slog.Error("Failed to begin transaction", "error", err, "user_id", userID)
@@ -157,7 +157,7 @@ func RotateAPIKey(userID int64, newAPIKey string) error {
 	}
 	defer tx.Rollback()
 
-	// Deactivate old keys
+	
 	_, err = tx.Exec(`
 		UPDATE postman_api_keys
 		SET is_active = false
@@ -168,7 +168,7 @@ func RotateAPIKey(userID int64, newAPIKey string) error {
 		return fmt.Errorf("failed to deactivate old keys: %v", err)
 	}
 
-	// Insert new key
+	
 	_, err = tx.Exec(`
 		INSERT INTO postman_api_keys (
 			user_id, encrypted_key, key_version,
@@ -181,7 +181,7 @@ func RotateAPIKey(userID int64, newAPIKey string) error {
 		return fmt.Errorf("failed to insert new key: %v", err)
 	}
 
-	// Commit transaction
+	
 	if err := tx.Commit(); err != nil {
 		slog.Error("Failed to commit transaction", "error", err, "user_id", userID)
 		return fmt.Errorf("failed to commit transaction: %v", err)

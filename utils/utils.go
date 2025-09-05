@@ -47,11 +47,11 @@ type Change struct {
 	PathSegments   []string `json:"path_segments"`
 	EndpointName   string   `json:"endpoint_name"`
 	ResourceType   string   `json:"resource_type"`
-	OldValue       *string  `json:"old_value"` // Using pointer to detect null
-	NewValue       *string  `json:"new_value"` // Using pointer to detect null
+	OldValue       *string  `json:"old_value"` 
+	NewValue       *string  `json:"new_value"` 
 }
 
-// Summary represents the summary object
+
 type Summary struct {
 	TotalChanges     int                `json:"total_changes"`
 	ChangesByType    map[string]int     `json:"changes_by_type"`
@@ -77,7 +77,7 @@ type ChangeLog struct {
 	Pagination    Pagination `json:"pagination"`
 }
 
-// FilterChangesWithNullValues filters out change objects where both old_value and new_value are null
+
 func FilterChangesWithNullValues(jsonData []byte) ([]byte, error) {
 	var changeLog ChangeLog
 	
@@ -136,7 +136,7 @@ func FilterChangesWithNullValues(jsonData []byte) ([]byte, error) {
 	
 
 
-// CleanJSONContent removes backslashes and replaces \n with actual newlines
+
 func CleanJSONContent(content string) string {
 	
 	cleaned := strings.ReplaceAll(content, "\\\"", "\"")

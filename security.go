@@ -18,12 +18,12 @@ var (
 )
 
 func initSecurity() {
-	// Initialize validator
+	
 	validate = validator.New()
 	validate.RegisterValidation("password", validatePassword)
 
-	// Initialize rate limiter
-	// 30 requests per minute per IP
+	
+	
 	rate := limiterpkg.Rate{
 		Period: 1 * 60, // 1 minute
 		Limit:  30,     // 30 requests
@@ -35,27 +35,27 @@ func initSecurity() {
 func validatePassword(fl validator.FieldLevel) bool {
 	password := fl.Field().String()
 
-	// At least 8 characters
+	
 	if len(password) < 8 {
 		return false
 	}
 
-	// At least one uppercase letter
+	
 	if !strings.ContainsAny(password, "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
 		return false
 	}
 
-	// At least one lowercase letter
+	
 	if !strings.ContainsAny(password, "abcdefghijklmnopqrstuvwxyz") {
 		return false
 	}
 
-	// At least one number
+	
 	if !strings.ContainsAny(password, "0123456789") {
 		return false
 	}
 
-	// At least one special character
+	
 	if !strings.ContainsAny(password, "!@#$%^&*()_+-=[]{}|;:,.<>?") {
 		return false
 	}
@@ -64,23 +64,23 @@ func validatePassword(fl validator.FieldLevel) bool {
 }
 
 func validateEmail(email string) error {
-	// Basic email format validation
+	
 	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
 	if !emailRegex.MatchString(email) {
 		return errors.New("invalid email format")
 	}
 
-	// Additional validation rules
+	
 	if len(email) > 255 {
 		return errors.New("email too long")
 	}
 
-	// Check for common disposable email domains
+	
 	disposableDomains := []string{
 		"tempmail.com",
 		"throwawaymail.com",
 		"mailinator.com",
-		// Add more as needed
+		
 	}
 	for _, domain := range disposableDomains {
 		if strings.HasSuffix(strings.ToLower(email), "@"+domain) {

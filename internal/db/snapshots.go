@@ -107,10 +107,10 @@ func GetSnapshotDetail(snapshotID string) (map[string]interface{}, error) {
 }
 
 type SnapshotFilterOptions struct {
-	Fields   string // comma-separated list of fields to include
-	Search   string // search term for item names
-	ItemType string // filter by type: "folder" or "request"
-	Depth    string // "shallow" for summary only, "deep" for full data
+	Fields   string 
+	Search   string 
+	ItemType string 
+	Depth    string 
 }
 
 func GetSnapshotItemsFiltered(snapshotID string, collectionID string, page int, pageSize int, filters SnapshotFilterOptions) (map[string]interface{}, error) {
@@ -180,7 +180,7 @@ func buildFilteredQuery(snapshotID string, filters SnapshotFilterOptions) (strin
 	whereConditions := []string{}
 	
 	if filters.Search != "" {
-		// Escape single quotes to prevent SQL injection
+		
 		escapedSearch := strings.ReplaceAll(filters.Search, "'", "''")
 		whereConditions = append(whereConditions, 
 			`(item->>'name' ILIKE '%' || '` + escapedSearch + `' || '%')`)
@@ -198,7 +198,7 @@ func buildFilteredQuery(snapshotID string, filters SnapshotFilterOptions) (strin
 		whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
 	}
 	
-	// shallow - return metrics only
+	
 	if filters.Depth == "shallow" {
 		selectClause = `
 			jsonb_build_object(
@@ -220,13 +220,13 @@ func buildFilteredQuery(snapshotID string, filters SnapshotFilterOptions) (strin
 				'url', item->'request'->'url'->>'raw'
 			) as item`
 	} else if filters.Fields != "" {
-		// Custom field selection
+		
 		fields := strings.Split(filters.Fields, ",")
 		fieldSelectors := []string{}
 		
 		for _, field := range fields {
 			field = strings.TrimSpace(field)
-			// Safe field selection - only allow specific fields
+			
 			switch field {
 			case "id", "uid", "name":
 				fieldSelectors = append(fieldSelectors, 
@@ -250,14 +250,14 @@ func buildFilteredQuery(snapshotID string, filters SnapshotFilterOptions) (strin
 			selectClause = fmt.Sprintf("jsonb_build_object(%s) as item", 
 				strings.Join(fieldSelectors, ", "))
 		} else {
-			selectClause = "item" // fallback to full item
+			selectClause = "item" 
 		}
 	} else {
-		// Default: return full item
+		
 		selectClause = "item"
 	}
 	
-	// Build main query - FIXED: Changed content->'collection'->'collection'->'item' to content->'collection'->'item'
+	
 	query := fmt.Sprintf(`
 		WITH items AS (
 			SELECT %s
@@ -279,7 +279,7 @@ func buildFilteredQuery(snapshotID string, filters SnapshotFilterOptions) (strin
 		FROM paginated_items
 	`, selectClause, whereClause)
 	
-	// Build count query - FIXED: Changed content->'collection'->'collection'->'item' to content->'collection'->'item'
+	
 	countQuery := fmt.Sprintf(`
 		SELECT COUNT(*)::int
 		FROM (

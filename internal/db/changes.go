@@ -100,7 +100,7 @@ type ChangeFilter struct {
 type ChangeNode struct {
 	Name         string                 `json:"name"`
 	Path         string                 `json:"path"`
-	Type         string                 `json:"type"` // "folder" or "change"
+	Type         string                 `json:"type"` 
 	ChangeType   string                 `json:"change_type,omitempty"`
 	ChangeCount  int                    `json:"change_count"`
 	Children     []*ChangeNode          `json:"children,omitempty"`
@@ -110,7 +110,7 @@ type ChangeNode struct {
 
 
 
-// DiffResponse represents the complete diff between two snapshots
+
 type DiffResponse struct {
 	OldSnapshotID int64        `json:"old_snapshot_id"`
 	NewSnapshotID int64        `json:"new_snapshot_id"`
@@ -119,14 +119,14 @@ type DiffResponse struct {
 	Summary       DiffSummary  `json:"summary"`
 }
 
-// DiffDetail represents a single change with extracted values
+
 type DiffDetail struct {
 	ChangeDetail
 	OldValue interface{} `json:"old_value"`
 	NewValue interface{} `json:"new_value"`
 }
 
-// DiffSummary provides high-level statistics about the diff
+
 type DiffSummary struct {
 	TotalChanges     int            `json:"total_changes"`
 	ChangesByType    map[string]int `json:"changes_by_type"`
@@ -146,17 +146,17 @@ type DiffSummary struct {
 type DiffRequest struct {
 	CollectionID string `param:"collectionId"`
 	SnapshotID   string `param:"snapshotId"`
-	// Query parameters
+	
 	Search     string `query:"search"`
-	FilterType string `query:"filter_type"` // all, added, deleted, modified
-	GroupBy    string `query:"group_by"`    // none, endpoint, type
+	FilterType string `query:"filter_type"` 
+	GroupBy    string `query:"group_by"`    
 	Page       int    `query:"page"`
 	PageSize   int    `query:"page_size"`
-	SortBy     string `query:"sort_by"`     // endpoint, type, path
-	SortOrder  string `query:"sort_order"`  // asc, desc
+	SortBy     string `query:"sort_by"`     
+	SortOrder  string `query:"sort_order"`  
 }
 
-// Enhanced response with pagination
+
 type PaginatedDiffResponse struct {
 	DiffResponse
 	Pagination PaginationInfo `json:"pagination"`
@@ -175,10 +175,10 @@ type GroupInfo struct {
 	Name       string       `json:"name"`
 	Count      int          `json:"count"`
 	Changes    []DiffDetail `json:"changes"`
-	Expanded   bool         `json:"expanded"` // Frontend can use this for UI state
+	Expanded   bool         `json:"expanded"` 
 }
 
-// Cache for diff results
+
 type DiffCache struct {
 	mu    sync.RWMutex
 	cache map[string]*CachedDiff
@@ -516,7 +516,7 @@ func GetChangeHierarchy(collectionID string, snapshotID int64) (*ChangeNode, err
 	filter := ChangeFilter{
 		CollectionID: collectionID,
 		SnapshotID:   &snapshotID,
-		Limit:        10000, // Get all changes for hierarchy
+		Limit:        10000, 
 	}
 	
 	changes, _, err := GetChanges(filter)
@@ -1027,11 +1027,11 @@ func extractValueByPath(data json.RawMessage, path string, skipIfMissing bool) (
 		return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
 	}
 
-	// Split path into segments
+	
 	segments := parsePathSegments(path)
 	current := jsonData
 
-	// Navigate through the JSON structure
+	
 	for i, segment := range segments {
 		if current == nil {
 			if skipIfMissing {
@@ -1043,7 +1043,7 @@ func extractValueByPath(data json.RawMessage, path string, skipIfMissing bool) (
 		switch v := current.(type) {
 		case map[string]interface{}:
 			if strings.HasPrefix(segment, "[") && strings.HasSuffix(segment, "]") {
-				// This is an array index, but we're in an object - path error
+				
 				if skipIfMissing {
 					return nil, nil
 				}
@@ -1067,7 +1067,7 @@ func extractValueByPath(data json.RawMessage, path string, skipIfMissing bool) (
 				return nil, fmt.Errorf("expected array index but got object key %s", segment)
 			}
 			
-			// Extract index from [n] format
+			
 			indexStr := segment[1 : len(segment)-1]
 			index := 0
 			if _, err := fmt.Sscanf(indexStr, "%d", &index); err != nil {
@@ -1086,7 +1086,7 @@ func extractValueByPath(data json.RawMessage, path string, skipIfMissing bool) (
 			current = v[index]
 
 		default:
-			// We've reached a primitive value but still have more segments
+			
 			if skipIfMissing {
 				return nil, nil
 			}
@@ -1177,7 +1177,7 @@ func GetFilteredSnapshotDiff(collectionID string, snapshotID int64, req DiffRequ
 	}, nil
 }
 
-// filterChanges applies search and type filters
+
 func filterChanges(changes []DiffDetail, req DiffRequest) []DiffDetail {
 	if req.Search == "" && req.FilterType == "all" {
 		return changes
@@ -1187,16 +1187,16 @@ func filterChanges(changes []DiffDetail, req DiffRequest) []DiffDetail {
 	searchLower := strings.ToLower(req.Search)
 	
 	for _, change := range changes {
-		// Apply type filter
+		
 		if req.FilterType != "all" && change.ChangeType != req.FilterType {
 			continue
 		}
 		
-		// Apply search filter
+		
 		if searchLower != "" {
 			matched := false
 			
-			// Search in multiple fields
+			
 			if strings.Contains(strings.ToLower(change.HumanPath), searchLower) ||
 			   strings.Contains(strings.ToLower(change.Path), searchLower) ||
 			   (change.EndpointName != "" && strings.Contains(strings.ToLower(change.EndpointName), searchLower)) ||
@@ -1204,7 +1204,7 @@ func filterChanges(changes []DiffDetail, req DiffRequest) []DiffDetail {
 				matched = true
 			}
 			
-			// Search in values for modified changes
+			
 			if !matched && change.ChangeType == "modified" {
 				oldValueStr := fmt.Sprintf("%v", change.OldValue)
 				newValueStr := fmt.Sprintf("%v", change.NewValue)
@@ -1225,7 +1225,7 @@ func filterChanges(changes []DiffDetail, req DiffRequest) []DiffDetail {
 	return filtered
 }
 
-// sortChanges sorts the changes based on the sort criteria
+
 func sortChanges(changes []DiffDetail, sortBy, sortOrder string) {
 	if sortBy == "" {
 		return
@@ -1242,7 +1242,7 @@ func sortChanges(changes []DiffDetail, sortBy, sortOrder string) {
 		case "path":
 			less = changes[i].HumanPath < changes[j].HumanPath
 		default:
-			// Default to endpoint name
+			
 			less = changes[i].EndpointName < changes[j].EndpointName
 		}
 		
@@ -1253,7 +1253,7 @@ func sortChanges(changes []DiffDetail, sortBy, sortOrder string) {
 	})
 }
 
-// groupChanges groups changes by the specified criteria
+
 func groupChanges(changes []DiffDetail, groupBy string) []GroupInfo {
 	groupMap := make(map[string][]DiffDetail)
 	
@@ -1275,18 +1275,18 @@ func groupChanges(changes []DiffDetail, groupBy string) []GroupInfo {
 		groupMap[key] = append(groupMap[key], change)
 	}
 	
-	// Convert map to slice
+	
 	groups := make([]GroupInfo, 0, len(groupMap))
 	for name, changes := range groupMap {
 		groups = append(groups, GroupInfo{
 			Name:     name,
 			Count:    len(changes),
 			Changes:  changes,
-			Expanded: true, // Default to expanded, frontend can manage this
+			Expanded: true, 
 		})
 	}
 	
-	// Sort groups by name
+	
 	sort.Slice(groups, func(i, j int) bool {
 		return groups[i].Name < groups[j].Name
 	})
@@ -1294,7 +1294,7 @@ func groupChanges(changes []DiffDetail, groupBy string) []GroupInfo {
 	return groups
 }
 
-// calculateFilteredSummary recalculates summary for filtered results
+
 func calculateFilteredSummary(changes []DiffDetail) DiffSummary {
 	changesByType := make(map[string]int)
 	endpointSet := make(map[string]bool)
@@ -1311,7 +1311,7 @@ func calculateFilteredSummary(changes []DiffDetail) DiffSummary {
 		affectedEndpoints = append(affectedEndpoints, endpoint)
 	}
 	
-	// Sort endpoints for consistency
+	
 	sort.Strings(affectedEndpoints)
 	
 	return DiffSummary{
@@ -1337,10 +1337,10 @@ func GetChangeDetail(collectionID string, changeID int64) (DiffDetail, error) {
 		return DiffDetail{}, err
 	}
 	
-	// Enhance the change detail
+	
 	enhanceChangeDetail(&change)
 	
-	// Get the snapshots to extract values
+	
 	oldSnapshot, err := getSnapshot(*change.OldSnapshotID)
 	if err != nil {
 		return DiffDetail{}, err
@@ -1351,7 +1351,7 @@ func GetChangeDetail(collectionID string, changeID int64) (DiffDetail, error) {
 		return DiffDetail{}, err
 	}
 	
-	// Extract values
+	
 	oldValue, _ := extractValueByPath(oldSnapshot.Content, change.Path, change.ChangeType == "added")
 	newValue, _ := extractValueByPath(newSnapshot.Content, change.Path, change.ChangeType == "deleted")
 	

@@ -38,7 +38,7 @@ type APIKeyResponse struct {
 	MaskedKey     string    `json:"masked_key"`
 }
 
-// Utility functions for pagination
+
 func getPage(c echo.Context) int {
 	page, _ := strconv.Atoi(c.QueryParam("page"))
 	if page < 1 {
@@ -73,7 +73,7 @@ func StoreAPIKey(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "API key is required"})
 	}
 
-	// Store API key
+	
 	if err := db.StorePostmanAPIKey(userID, req.APIKey); err != nil {
 		slog.Error("Failed to store API key", "error", err, "user_id", userID)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to store API key"})
@@ -213,7 +213,7 @@ func GetCollectionChanges(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Collection ID is required"})
 	}
 
-	// Get pagination parameters with defaults
+	
 	page := 1
 	pageSize := 10
 
@@ -258,7 +258,7 @@ func GetJobStatus(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get job status"})
 	}
 
-	// Verify the job belongs to the user
+	
 	if job.UserID != userID {
 		return c.JSON(http.StatusForbidden, map[string]string{"error": "Access denied"})
 	}
@@ -270,7 +270,7 @@ func GetUserJobs(c echo.Context) error {
 	
 	userID := c.Get("user_id").(int64)
 
-	// Get user's jobs
+	
 	jobs, err := db.GetUserCollectionJobs(userID)
 	if err != nil {
 		slog.Error("Failed to get user jobs", "error", err, "user_id", userID)
@@ -290,14 +290,14 @@ func CompareSnapShots(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Collection ID is required"})
 	}
 
-	// Get latest snapshots
+	
 	latestSnapshot, previousSnapshot, err := db.GetLatestSnapshots(collectionID)
 	if err != nil {
 		slog.Error("Failed to get snapshots for comparison", "error", err, "user_id", userID, "collection_id", collectionID)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get snapshots for comparison"})
 	}
 
-	// Compare snapshots
+	
 	result, err := db.CompareSnapShots(previousSnapshot, latestSnapshot)
 	if err != nil {
 		slog.Error("Failed to compare collections", "error", err, "user_id", userID, "collection_id", collectionID)
@@ -322,24 +322,24 @@ func GetAPIKeys(c echo.Context) error {
 	
 	userID := c.Get("user_id").(int64)
 
-	// Get API key info
+	
 	keys, err := db.GetAPIKeyInfo(userID)
 	if err != nil {
 		slog.Error("Failed to get API keys", "error", err, "user_id", userID)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get API keys"})
 	}
 
-	// Process each key
+	
 	var response []APIKeyResponse
 	for _, key := range keys {
-		// Decrypt the API key
+		
 		decryptedKey, err := config.DecryptAPIKey(key.EncryptedKey)
 		if err != nil {
 			slog.Error("Failed to decrypt API key", "error", err, "user_id", userID, "key_id", key.ID)
 			continue
 		}
 
-		// Create response with masked key
+		
 		response = append(response, APIKeyResponse{
 			ID:            key.ID,
 			CreatedAt:     key.CreatedAt,

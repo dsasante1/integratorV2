@@ -39,7 +39,7 @@ type CollectionItem struct {
 	Name     string           `json:"name"`
 	Request  *Request         `json:"request,omitempty"`
 	Response []Response       `json:"response,omitempty"`
-	Item     []CollectionItem `json:"item,omitempty"` // For folders
+	Item     []CollectionItem `json:"item,omitempty"` 
 }
 
 
@@ -47,7 +47,7 @@ type Request struct {
 	Method string      `json:"method"`
 	Header []Header    `json:"header"`
 	Body   *Body       `json:"body,omitempty"`
-	URL    interface{} `json:"url"` // Can be string or URLObject
+	URL    interface{} `json:"url"` 
 }
 
 
@@ -228,17 +228,17 @@ func (m *CollectionMasker) MaskCollection(collection *PostmanCollectionStructure
 		}, nil
 	}
 	
-	// start := time.Now()
+	
 	
 	if collection == nil {
 		return nil, fmt.Errorf("collection cannot be nil")
 	}
 	
 	
-	// stats := &MaskingStats{
-	// 	MaskedFieldTypes: make(map[string]int),
-	// 	MaskedValues:     make(map[string]*MaskedValue),
-	// }
+	
+	
+	
+	
 	
 	
 	maskedCollection := &PostmanCollectionStructure{}

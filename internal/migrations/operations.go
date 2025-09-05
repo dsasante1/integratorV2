@@ -8,7 +8,7 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 )
 
-// Up runs all available migrations
+
 func Up(migrationFiles embed.FS) error {
 	m, err := NewMigrator(migrationFiles)
 	if err != nil {
@@ -29,7 +29,7 @@ func Up(migrationFiles embed.FS) error {
 	return nil
 }
 
-// Down rolls back one migration
+
 func Down(migrationFiles embed.FS) error {
 	m, err := NewMigrator(migrationFiles)
 	if err != nil {
@@ -45,7 +45,7 @@ func Down(migrationFiles embed.FS) error {
 	return nil
 }
 
-// Force forces the database to a specific migration version
+
 func Force(migrationFiles embed.FS, version string) error {
 	m, err := NewMigrator(migrationFiles)
 	if err != nil {
@@ -66,7 +66,7 @@ func Force(migrationFiles embed.FS, version string) error {
 	return nil
 }
 
-// Version shows the current migration version
+
 func Version(migrationFiles embed.FS) error {
 	m, err := NewMigrator(migrationFiles)
 	if err != nil {
@@ -89,7 +89,7 @@ func Version(migrationFiles embed.FS) error {
 	return nil
 }
 
-// Drop drops the entire database (DANGEROUS)
+
 func Drop(migrationFiles embed.FS) error {
 	m, err := NewMigrator(migrationFiles)
 	if err != nil {
@@ -105,7 +105,7 @@ func Drop(migrationFiles embed.FS) error {
 	return nil
 }
 
-// Reset drops all tables and re-runs all migrations
+
 func Reset(migrationFiles embed.FS) error {
 	if err := Drop(migrationFiles); err != nil {
 		return fmt.Errorf("failed to drop database: %w", err)

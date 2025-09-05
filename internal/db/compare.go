@@ -7,7 +7,7 @@ import (
 	"log/slog"
 )
 
-// CompareResult represents the differences between two collections
+
 type CompareResult struct {
 	Added    []string `json:"added"`
 	Removed  []string `json:"removed"`
@@ -18,7 +18,7 @@ type CompareResult struct {
 	} `json:"modified"`
 }
 
-// CompareSnapShots compares two collection snapshots and returns their differences
+
 func CompareSnapShots(oldSnapshot, newSnapshot *Snapshot) (*CompareResult, error) {
 	if oldSnapshot == nil || newSnapshot == nil {
 		return nil, fmt.Errorf("both snapshots must be provided")
@@ -42,15 +42,15 @@ func CompareSnapShots(oldSnapshot, newSnapshot *Snapshot) (*CompareResult, error
 		}, 0),
 	}
 
-	// Compare the collections recursively
+	
 	compareMaps("", oldContent, newContent, result)
 
 	return result, nil
 }
 
-// compareMaps recursively compares two maps and updates the CompareResult
+
 func compareMaps(path string, oldMap, newMap map[string]interface{}, result *CompareResult) {
-	// Check for added and modified items
+	
 	for key, newValue := range newMap {
 		newPath := key
 		if path != "" {
@@ -59,22 +59,22 @@ func compareMaps(path string, oldMap, newMap map[string]interface{}, result *Com
 
 		oldValue, exists := oldMap[key]
 		if !exists {
-			// Item was added
+			
 			result.Added = append(result.Added, newPath)
 			continue
 		}
 
-		// Compare values
+		
 		if !reflect.DeepEqual(oldValue, newValue) {
 			if oldMap, ok := oldValue.(map[string]interface{}); ok {
 				if newMap, ok := newValue.(map[string]interface{}); ok {
-					// Recursively compare nested maps
+					
 					compareMaps(newPath, oldMap, newMap, result)
 					continue
 				}
 			}
 
-			// Values are different
+			
 			result.Modified = append(result.Modified, struct {
 				Path     string `json:"path"`
 				OldValue string `json:"old_value"`
@@ -87,7 +87,7 @@ func compareMaps(path string, oldMap, newMap map[string]interface{}, result *Com
 		}
 	}
 
-	// Check for removed items
+	
 	for key := range oldMap {
 		if _, exists := newMap[key]; !exists {
 			removedPath := key
@@ -99,7 +99,7 @@ func compareMaps(path string, oldMap, newMap map[string]interface{}, result *Com
 	}
 }
 
-// GetLatestSnapshots returns the two most recent snapshots for a collection
+
 func GetLatestSnapshots(collectionID string) (*Snapshot, *Snapshot, error) {
 	var snapshots []Snapshot
 	err := DB.Select(&snapshots, `

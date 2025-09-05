@@ -20,38 +20,38 @@ import (
 func init() {
 	Validate = validator.New()
 	
-	// Register custom password validation
+	
 	Validate.RegisterValidation("password", validatePassword)
 }
 
-// Custom password validation function
+
 func validatePassword(fl validator.FieldLevel) bool {
 	password := fl.Field().String()
 	
-	// At least 8 characters
+	
 	if len(password) < 8 {
 		return false
 	}
 	
-	// Contains uppercase letter
+	
 	hasUpper := regexp.MustCompile(`[A-Z]`).MatchString(password)
-	// Contains lowercase letter
+	
 	hasLower := regexp.MustCompile(`[a-z]`).MatchString(password)
-	// Contains digit
+	
 	hasDigit := regexp.MustCompile(`\d`).MatchString(password)
-	// Contains special character
+	
 	hasSpecial := regexp.MustCompile(`[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]`).MatchString(password)
 	
 	return hasUpper && hasLower && hasDigit && hasSpecial
 }
 
-// ValidateEmail validates email format and requirements
+
 func ValidateEmail(email string) error {
 	if email == "" {
 		return errors.New("email is required")
 	}
 	
-	// Use validator to check email format
+	
 	if err := Validate.Var(email, "required,email"); err != nil {
 		return errors.New("invalid email format")
 	}
@@ -82,13 +82,13 @@ type LoginResponse struct {
 }
 
 func CreateUser(email, password string) (*User, error) {
-	// Hash the password
+	
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, err
 	}
 
-	// Insert the user
+	
 	user := &User{
 		Email:    email,
 		Password: string(hashedPassword),
@@ -120,7 +120,7 @@ func GetUserByEmail(email string) (*User, error) {
 }
 
 func GenerateToken(user *User) (string, error) {
-	// Create the Claims
+	
 	claims := jwt.MapClaims{
 		"user_id": user.ID,
 		"email":   user.Email,
@@ -131,7 +131,7 @@ func GenerateToken(user *User) (string, error) {
 
 	secret := os.Getenv("JWT_SECRET")
 	if secret == "" {
-		secret = "your-secret-key" // Use this only for development
+		secret = "your-secret-key" 
 	}
 
 	return token.SignedString([]byte(secret))

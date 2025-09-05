@@ -183,18 +183,18 @@ func normalizeForHashing(obj interface{}) interface{} {
 	}
 }
 
-// isVolatileField checks if a field should be ignored for content hashing
+
 func isVolatileField(key string) bool {
 	volatileFields := []string{
-		"_postman_id",     // Auto-generated IDs
-		"id",              // Response IDs that might change
-		"processing_time", // Masking processing time
-		"masked_at",       // Masking timestamp
-		"masking_id",      // Masking session ID
-		"Date",            // HTTP response dates
-		"ETag",            // HTTP ETags
-		"currentHelper",   // UI state
-		"helperAttributes", // UI state
+		"_postman_id",     
+		"id",              
+		"processing_time", 
+		"masked_at",       
+		"masking_id",      
+		"Date",            
+		"ETag",            
+		"currentHelper",   
+		"helperAttributes", 
 	}
 	
 	for _, volatile := range volatileFields {

@@ -39,11 +39,11 @@ type Change struct {
 }
 
 type CompareOptions struct {
-	MaxDepth        int      // Maximum depth to traverse (0 = unlimited)
-	MaxChanges      int      // Maximum number of changes to record (0 = unlimited)
-	IgnorePaths     []string // Paths to ignore (e.g., ["info.version", "info._postman_id"])
-	CompactChanges  bool     // If true, store minimal change info
-	HashThreshold   int      // Size threshold for hashing large values (default 1000)
+	MaxDepth        int      
+	MaxChanges      int      
+	IgnorePaths     []string 
+	CompactChanges  bool     
+	HashThreshold   int      
 }
 
 
@@ -117,13 +117,13 @@ func GetCollection(apiKey, collectionID string) (*PostmanCollectionStructure, er
 
 func DefaultPostmanOptions() *CompareOptions {
 	return &CompareOptions{
-		MaxDepth:      0, // Unlimited depth
-		MaxChanges:    1000, // Limit changes to prevent memory issues
-		HashThreshold: 1000, // Hash values larger than 1KB
+		MaxDepth:      0, 
+		MaxChanges:    1000, 
+		HashThreshold: 1000, 
 		IgnorePaths: []string{
 			"collection.info._postman_id",
 			"collection.info.version",
-			"collection.item[*].id",  // More specific paths
+			"collection.item[*].id",  
 			"**.currentHelper",
 			"**.helperAttributes",
 		},
@@ -334,7 +334,7 @@ func comparePostmanItems(ctx *compareContext, path string, old, new []interface{
 }
 
 func getItemKey(item map[string]interface{}) string {
-    // Use a combination of fields for better uniqueness
+    
     if request, ok := item["request"].(map[string]interface{}); ok {
         if url, ok := request["url"].(map[string]interface{}); ok {
             if raw, ok := url["raw"].(string); ok {
@@ -526,18 +526,18 @@ func jsonEqual(a, b interface{}) bool {
 
 
 
-// StructuralChange represents a structural difference between JSONs
+
 type StructuralChange struct {
-	Type string // "added_field" or "deleted_field"
+	Type string 
 	Path string
-	Field string // The field name that was added/deleted
+	Field string 
 }
 
-// CompareStructure performs a shallow structural comparison to detect field additions/deletions
+
 func CompareStructure(ctx *compareContext, path string, old, new interface{}) []StructuralChange {
 	var structural []StructuralChange
 	
-	// Only compare structure for objects
+	
 	oldObj, oldIsObj := old.(map[string]interface{})
 	newObj, newIsObj := new.(map[string]interface{})
 	
@@ -545,7 +545,7 @@ func CompareStructure(ctx *compareContext, path string, old, new interface{}) []
 		return structural
 	}
 	
-	// Check for added fields (in new but not in old)
+	
 	for key := range newObj {
 		if _, exists := oldObj[key]; !exists {
 			structural = append(structural, StructuralChange{
@@ -556,7 +556,7 @@ func CompareStructure(ctx *compareContext, path string, old, new interface{}) []
 		}
 	}
 	
-	// Check for deleted fields (in old but not in new)
+	
 	for key := range oldObj {
 		if _, exists := newObj[key]; !exists {
 			structural = append(structural, StructuralChange{
@@ -570,7 +570,7 @@ func CompareStructure(ctx *compareContext, path string, old, new interface{}) []
 	return structural
 }
 
-// ComparePostmanSnapshotsWithStructure performs two-phase comparison
+
 func ComparePostmanSnapshotsWithStructure(old, new json.RawMessage, opts *CompareOptions) ([]Change, []StructuralChange, error) {
 	if opts == nil {
 		opts = DefaultPostmanOptions()
@@ -592,16 +592,16 @@ func ComparePostmanSnapshotsWithStructure(old, new json.RawMessage, opts *Compar
 		changeCount: 0,
 	}
 
-	// Phase 1: Structural comparison
+	
 	structural := compareStructureRecursive(ctx, "", oldData, newData, 0)
 	
-	// Phase 2: Content comparison (your existing logic)
+	
 	compareRecursive(ctx, "", oldData, newData, 0)
 	
 	return ctx.changes, structural, nil
 }
 
-// compareStructureRecursive recursively compares structure throughout the JSON tree
+
 func compareStructureRecursive(ctx *compareContext, path string, old, new interface{}, depth int) []StructuralChange {
 	var allStructural []StructuralChange
 	
@@ -609,16 +609,16 @@ func compareStructureRecursive(ctx *compareContext, path string, old, new interf
 		return allStructural
 	}
 	
-	// Get structural changes at this level
+	
 	structural := CompareStructure(ctx, path, old, new)
 	allStructural = append(allStructural, structural...)
 	
-	// Recursively check nested objects
+	
 	oldObj, oldIsObj := old.(map[string]interface{})
 	newObj, newIsObj := new.(map[string]interface{})
 	
 	if oldIsObj && newIsObj {
-		// For fields that exist in both, recursively check their structure
+		
 		for key := range oldObj {
 			if newVal, exists := newObj[key]; exists {
 				newPath := joinPath(path, key)
@@ -628,7 +628,7 @@ func compareStructureRecursive(ctx *compareContext, path string, old, new interf
 		}
 	}
 	
-	// Handle arrays
+	
 	oldArr, oldIsArr := old.([]interface{})
 	newArr, newIsArr := new.([]interface{})
 	
@@ -648,7 +648,7 @@ func compareStructureRecursive(ctx *compareContext, path string, old, new interf
 	return allStructural
 }
 
-// Enhanced compareRecursive that can skip structural differences if needed
+
 func compareRecursiveEnhanced(ctx *compareContext, path string, old, new interface{}, depth int, skipStructural bool) {
 	if ctx.opts.MaxChanges > 0 && ctx.changeCount >= ctx.opts.MaxChanges {
 		return
@@ -700,7 +700,7 @@ func compareRecursiveEnhanced(ctx *compareContext, path string, old, new interfa
 	}
 }
 
-// Enhanced compareObjects that can handle structural skip
+
 func compareObjectsEnhanced(ctx *compareContext, path string, old, new map[string]interface{}, depth int, skipStructural bool) {
 	if isLargeObject(old) || isLargeObject(new) {
 		if !deepEqual(old, new) {
@@ -709,7 +709,7 @@ func compareObjectsEnhanced(ctx *compareContext, path string, old, new map[strin
 		return
 	}
 
-	// Check modifications for existing fields
+	
 	for k, newVal := range new {
 		newPath := joinPath(path, k)
 		if oldVal, exists := old[k]; exists {
@@ -719,7 +719,7 @@ func compareObjectsEnhanced(ctx *compareContext, path string, old, new map[strin
 		}
 	}
 
-	// Check deletions
+	
 	if !skipStructural {
 		for k, oldVal := range old {
 			if _, exists := new[k]; !exists {
@@ -729,18 +729,18 @@ func compareObjectsEnhanced(ctx *compareContext, path string, old, new map[strin
 	}
 }
 
-// Example usage function
+
 func AnalyzeJSONDifferences(old, new json.RawMessage) {
 	opts := DefaultPostmanOptions()
 	
-	// Get both structural and content changes
+	
 	changes, structural, err := ComparePostmanSnapshotsWithStructure(old, new, opts)
 	if err != nil {
 		slog.Error("Failed to compare", "error", err)
 		return
 	}
 	
-	// Log structural changes
+	
 	if len(structural) > 0 {
 		slog.Info("Structural differences found", "count", len(structural))
 		for _, s := range structural {
@@ -751,7 +751,7 @@ func AnalyzeJSONDifferences(old, new json.RawMessage) {
 		}
 	}
 	
-	// Log content changes
+	
 	if len(changes) > 0 {
 		slog.Info("Content changes found", "count", len(changes))
 		for _, c := range changes {
@@ -767,7 +767,7 @@ func AnalyzeJSONDifferences(old, new json.RawMessage) {
 	}
 }
 
-// Alternative: Get only structural differences without content comparison
+
 func GetStructuralDifferencesOnly(old, new json.RawMessage, opts *CompareOptions) ([]StructuralChange, error) {
 	if opts == nil {
 		opts = DefaultPostmanOptions()
@@ -793,7 +793,7 @@ func GetStructuralDifferencesOnly(old, new json.RawMessage, opts *CompareOptions
 }
 
 func hasStructuralChanges(ctx *compareContext, path string, old, new interface{}) bool {
-	// Check if both are objects
+	
 	oldObj, oldIsObj := old.(map[string]interface{})
 	newObj, newIsObj := new.(map[string]interface{})
 	
@@ -830,7 +830,7 @@ func hasStructuralChanges(ctx *compareContext, path string, old, new interface{}
 		return false
 	}
 	
-	// Check arrays for length differences (additions/deletions)
+	
 	oldArr, oldIsArr := old.([]interface{})
 	newArr, newIsArr := new.([]interface{})
 	
@@ -855,19 +855,19 @@ func hasStructuralChanges(ctx *compareContext, path string, old, new interface{}
 				}
 			}
 			
-			// Check if any items were added or deleted
+			
 			for key := range oldKeys {
 				if !newKeys[key] {
-					return true // Item deleted
+					return true 
 				}
 			}
 			for key := range newKeys {
 				if !oldKeys[key] {
-					return true // Item added
+					return true 
 				}
 			}
 			
-			// Recursively check remaining items
+			
 			for i := 0; i < len(oldArr) && i < len(newArr); i++ {
 				if hasStructuralChanges(ctx, fmt.Sprintf("%s[%d]", path, i), oldArr[i], newArr[i]) {
 					return true
@@ -897,36 +897,36 @@ func processStructuralChanges(ctx *compareContext, path string, old, new interfa
 		return
 	}
 	
-	// Handle objects
+	
 	oldObj, oldIsObj := old.(map[string]interface{})
 	newObj, newIsObj := new.(map[string]interface{})
 	
 	if oldIsObj && newIsObj {
-		// Process added fields
+		
 		for key, newVal := range newObj {
 			newPath := joinPath(path, key)
 			if shouldIgnorePath(newPath, ctx.opts.IgnorePaths) {
 				continue
 			}
 			if _, exists := oldObj[key]; !exists {
-				// Field was added
+				
 				addChange(ctx, "added", newPath, newVal)
 			}
 		}
 		
-		// Process deleted fields
+		
 		for key, oldVal := range oldObj {
 			newPath := joinPath(path, key)
 			if shouldIgnorePath(newPath, ctx.opts.IgnorePaths) {
 				continue
 			}
 			if _, exists := newObj[key]; !exists {
-				// Field was deleted
+				
 				addChange(ctx, "deleted", newPath, oldVal)
 			}
 		}
 		
-		// Recursively check for structural changes in nested objects
+		
 		for key := range oldObj {
 			if newVal, exists := newObj[key]; exists {
 				newPath := joinPath(path, key)
@@ -944,7 +944,7 @@ func processStructuralChanges(ctx *compareContext, path string, old, new interfa
 	
 	if oldIsArr && newIsArr {
 		if isPostmanItemArray(path) {
-			// Special handling for Postman item arrays
+			
 			processPostmanItemStructuralChanges(ctx, path, oldArr, newArr, depth)
 		} else {
 			if len(oldArr) != len(newArr) {
@@ -973,12 +973,12 @@ func processStructuralChanges(ctx *compareContext, path string, old, new interfa
 	}
 }
 
-// Special handling for Postman item arrays to avoid false modifications
+
 func processPostmanItemStructuralChanges(ctx *compareContext, path string, oldArr, newArr []interface{}, depth int) {
 	oldMap := make(map[string]interface{})
 	oldIndices := make(map[string]int)
 	
-	// Build map of old items by key
+	
 	for i, item := range oldArr {
 		if m, ok := item.(map[string]interface{}); ok {
 			key := getItemKey(m)

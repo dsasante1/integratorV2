@@ -13,26 +13,26 @@ import (
 )
 
 var (
-	// Rate limiter settings
+	
 	requestsPerMinute = 30
 	rateLimiters      = make(map[string]*rate.Limiter)
 	rateLimitMutex    sync.Mutex
 
-	// Email validation regex
+	
 	emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
 )
 
-// InitSecurity initializes all security features
+
 func InitSecurity() error {
-	// Initialize rate limiters
+	
 	initRateLimiters()
 
-	// Initialize KMS
+	
 	if err := config.InitKMS(); err != nil {
 		return err
 	}
 
-	// Initialize KMS rotation
+	
 	if err := kms.InitRotation(); err != nil {
 		return err
 	}
@@ -40,7 +40,7 @@ func InitSecurity() error {
 	return nil
 }
 
-// RateLimiter middleware for rate limiting requests
+
 func RateLimiter(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		ip := c.RealIP()
@@ -63,10 +63,10 @@ func RateLimiter(next echo.HandlerFunc) echo.HandlerFunc {
 	}
 }
 
-// ValidateEmail validates email format
+
 func ValidateEmail(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		// Only validate email for signup and login endpoints
+		
 		if c.Path() == "/signup" || c.Path() == "/login" {
 			email := c.FormValue("email")
 			if email == "" {

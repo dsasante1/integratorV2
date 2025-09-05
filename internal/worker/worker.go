@@ -57,17 +57,17 @@ func (w *Worker) Start(ctx context.Context) error {
 		"queues", []string{queue.QueueCollectionImport, queue.QueueKMSRotation},
 		"concurrency", 10)
 
-	// Start server
+	
 	if err := w.server.Start(mux); err != nil {
 		return err
 	}
 
 	slog.Info("Worker started successfully")
 
-	// Wait for context cancellation
+	
 	<-ctx.Done()
 
-	// Stop server
+	
 	w.server.Stop()
 	slog.Info("Worker stopped")
 	return nil
